@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  ENCODER
+}
+
+enum Status {
+  ACTIVE
+  PENDING
+  INACTIVE
+}
+
+enum UploadStatus {
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(ENCODER)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  records    Record[]
+  uploadLogs UploadLog[]
+  files      File[]
+
+  @@map("users")
+}
+
+model Department {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  color     String
+  head      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  records    Record[]
+  uploadLogs UploadLog[]
+  files      File[]
+
+  @@map("departments")
+}
+
+model Record {
+  id           String   @id @default(cuid())
+  name         String
+  departmentId String
+  year         Int
+  status       Status   @default(ACTIVE)
+  data         Json     @default("{}")
+  uploadedById String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  uploadedBy User       @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([departmentId])
+  @@index([year])
+  @@index([departmentId, year])
+  @@map("records")
+}
+
+model UploadLog {
+  id           String       @id @default(cuid())
+  departmentId String
+  year         Int
+  fileName     String
+  inserted     Int          @default(0)
+  skipped      Int          @default(0)
+  uploadedById String
+  status       UploadStatus @default(SUCCESS)
+  errors       Json         @default("[]")
+  createdAt    DateTime     @default(now())
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  uploadedBy User       @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([departmentId])
+  @@map("upload_logs")
+}
+
+model File {
+  id           String   @id @default(cuid())
+  fileName     String
+  originalName String
+  size         Int
+  mimeType     String
+  departmentId String
+  year         Int
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  uploadedBy User       @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([departmentId])
+  @@index([departmentId, year])
+  @@map("files")
+}
