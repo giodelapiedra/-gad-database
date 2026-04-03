@@ -18,13 +18,7 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'https://gadapi.tanauancity.com',
-    'https://admin.tanauancity.com',
-    /\.vercel\.app$/,
-  ],
+  origin: true,
   credentials: true,
 }));
 app.use(express.json());
