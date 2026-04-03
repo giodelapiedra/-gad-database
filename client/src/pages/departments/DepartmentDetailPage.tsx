@@ -48,7 +48,7 @@ import RoleGuard from '@/components/auth/RoleGuard';
 
 import { useGetDepartments, useUpdateDepartment, useDeleteDepartment } from '@/hooks/useDepartments';
 import { useGetFiles, useGetFileYears, useUploadFiles, useDeleteFile, type FileRecord } from '@/hooks/useFiles';
-import { formatDate, formatNumber } from '@/utils/formatters';
+import { formatDate } from '@/utils/formatters';
 import { toastSuccess, toastError } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
@@ -94,7 +94,7 @@ export default function DepartmentDetailPage() {
   const yearFolders = useMemo(() => {
     const defaultYears = [2022, 2023, 2024, 2025, 2026];
     const allYears = new Set([...defaultYears, ...customYears, ...(fileYears ?? [])]);
-    return Array.from(allYears).sort((a, b) => b.year - a.year);
+    return Array.from(allYears).sort((a, b) => b - a);
   }, [fileYears, customYears]);
 
   // ---------------------------------------------------------------------------
@@ -114,8 +114,7 @@ export default function DepartmentDetailPage() {
   const totalPages = filesData?.totalPages ?? 0;
 
   // File count per year for folder cards (use a lightweight query per year)
-  const { data: folderCountData } = useGetFiles({ dept: code, limit: 1 });
-  const totalDeptFiles = folderCountData?.total ?? 0;
+  const { data: _folderCountData } = useGetFiles({ dept: code, limit: 1 });
 
   // ---------------------------------------------------------------------------
   // Create folder (year)

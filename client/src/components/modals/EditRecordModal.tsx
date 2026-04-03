@@ -51,7 +51,7 @@ export default function EditRecordModal({ open, onClose, onSuccess, record }: Ed
     reset,
     formState: { errors },
   } = useForm<EditForm>({
-    resolver: zodResolver(editSchema),
+    resolver: zodResolver(editSchema) as any,
   });
 
   useEffect(() => {

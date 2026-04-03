@@ -114,7 +114,7 @@ export default function UploadHistoryPage() {
           )}
         </div>
 
-        <Select value={deptFilter} onValueChange={(v) => { setDeptFilter(v); setPage(1); }}>
+        <Select value={deptFilter} onValueChange={(v) => { setDeptFilter(v ?? ''); setPage(1); }}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="All departments" />
           </SelectTrigger>
@@ -128,7 +128,7 @@ export default function UploadHistoryPage() {
           </SelectContent>
         </Select>
 
-        <Select value={yearFilter} onValueChange={(v) => { setYearFilter(v); setPage(1); }}>
+        <Select value={yearFilter} onValueChange={(v) => { setYearFilter(v ?? ''); setPage(1); }}>
           <SelectTrigger className="w-28">
             <SelectValue placeholder="All years" />
           </SelectTrigger>

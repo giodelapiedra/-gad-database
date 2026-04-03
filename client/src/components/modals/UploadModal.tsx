@@ -236,7 +236,7 @@ export default function UploadModal({ open, onClose, onSuccess }: UploadModalPro
             {/* Department */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Department</label>
-              <Select value={departmentId} onValueChange={setDepartmentId}>
+              <Select value={departmentId} onValueChange={(v) => setDepartmentId(v ?? '')}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select department" />
                 </SelectTrigger>

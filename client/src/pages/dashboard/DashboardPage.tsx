@@ -6,7 +6,6 @@ import {
   Calendar,
   HardDrive,
   FileSpreadsheetIcon,
-  BuildingIcon,
 } from 'lucide-react';
 import {
   BarChart,
@@ -158,7 +157,7 @@ export default function DashboardPage() {
                 <Tooltip
                   contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #EBEBEB' }}
                   cursor={{ fill: '#F4F4F5' }}
-                  formatter={(value: number) => [`${value} files`, 'Files']}
+                  formatter={(value: any) => [`${value} files`, 'Files']}
                 />
                 <Bar dataKey="total" radius={[0, 4, 4, 0]} barSize={18} isAnimationActive={false}>
                   {chartDepts.map((d) => (

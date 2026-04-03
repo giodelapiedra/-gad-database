@@ -57,7 +57,7 @@ export default function AddRecordModal({
     reset,
     formState: { errors },
   } = useForm<RecordForm>({
-    resolver: zodResolver(recordSchema),
+    resolver: zodResolver(recordSchema) as any,
     defaultValues: {
       name: '',
       year: new Date().getFullYear(),
