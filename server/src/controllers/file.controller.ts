@@ -182,7 +182,7 @@ export async function getFileYears(req: AuthRequest, res: Response): Promise<voi
 
 export async function viewFile(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const file = await prisma.file.findUnique({ where: { id } });
 
     if (!file) {
@@ -203,7 +203,7 @@ export async function viewFile(req: AuthRequest, res: Response): Promise<void> {
 
 export async function deleteFile(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const file = await prisma.file.findUnique({ where: { id } });
 

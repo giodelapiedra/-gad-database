@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { AuthRequest } from '../types';
 import { sendSuccess, sendError } from '../utils/response';
@@ -72,7 +72,7 @@ export async function uploadFile(req: AuthRequest, res: Response): Promise<void>
         departmentId,
         year: overrideYear ?? row.year,
         status: row.status as 'ACTIVE' | 'PENDING' | 'INACTIVE',
-        data: row.data,
+        data: row.data as Prisma.InputJsonValue,
         uploadedById: req.user!.id,
       }));
 

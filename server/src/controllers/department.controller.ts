@@ -112,7 +112,7 @@ export async function create(req: AuthRequest, res: Response): Promise<void> {
 
 export async function update(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const existing = await prisma.department.findUnique({ where: { id } });
 
@@ -158,7 +158,7 @@ export async function update(req: AuthRequest, res: Response): Promise<void> {
 
 export async function softDelete(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const existing = await prisma.department.findUnique({ where: { id } });
 

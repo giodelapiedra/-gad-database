@@ -16,7 +16,7 @@ const createSchema = z.object({
   departmentId: z.string().min(1, 'Department is required'),
   year: z.number().int().min(1900, 'Year min 1900').max(2100, 'Year max 2100'),
   status: z.enum(['ACTIVE', 'PENDING', 'INACTIVE']).default('ACTIVE'),
-  data: z.record(z.unknown()).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
 });
 
 const updateSchema = createSchema.partial();
@@ -135,7 +135,7 @@ export async function create(req: AuthRequest, res: Response): Promise<void> {
       data: {
         ...rest,
         departmentId,
-        data: data ?? {},
+        data: (data ?? {}) as Prisma.InputJsonValue,
         uploadedById: req.user!.id,
       },
       include: {
@@ -156,7 +156,7 @@ export async function create(req: AuthRequest, res: Response): Promise<void> {
 
 export async function update(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const existing = await prisma.record.findUnique({ where: { id } });
 
@@ -187,8 +187,8 @@ export async function update(req: AuthRequest, res: Response): Promise<void> {
       where: { id },
       data: {
         ...rest,
-        ...(departmentId && { departmentId }),
-        ...(data !== undefined && { data }),
+        ...(departmentId && { department: { connect: { id: departmentId } } }),
+        ...(data !== undefined && { data: data as Prisma.InputJsonValue }),
       },
       include: {
         department: { select: { name: true, code: true, color: true } },
@@ -208,7 +208,7 @@ export async function update(req: AuthRequest, res: Response): Promise<void> {
 
 export async function remove(req: AuthRequest, res: Response): Promise<void> {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const existing = await prisma.record.findUnique({ where: { id } });
 
