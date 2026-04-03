@@ -22,6 +22,7 @@ app.use(cors({
     'http://localhost:5173',
     'http://localhost:3000',
     'https://gadapi.tanauancity.com',
+    'https://admin.tanauancity.com',
     /\.vercel\.app$/,
   ],
   credentials: true,
