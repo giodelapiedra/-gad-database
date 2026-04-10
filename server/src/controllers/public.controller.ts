@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { Readable } from 'stream';
+import prisma from '../utils/db';
 import { sendSuccess, sendError } from '../utils/response';
-
-const prisma = new PrismaClient();
+import { streamFromR2 } from '../utils/s3';
 
 function getPublicUrl(key: string): string {
   const base = process.env.R2_PUBLIC_URL || 'https://gaduploads.tanauancity.com';
@@ -139,6 +140,186 @@ export async function getYears(_req: Request, res: Response): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/public/resources?parentId=xxx
+// Returns folder contents (folders + files) for the public site
+// ---------------------------------------------------------------------------
+
+export async function getResources(req: Request, res: Response): Promise<void> {
+  try {
+    const { parentId } = req.query as Record<string, string | undefined>;
+
+    const [folders, files] = await Promise.all([
+      prisma.resourceFolder.findMany({
+        where: { parentId: parentId || null },
+        include: {
+          _count: { select: { children: true, files: true } },
+        },
+        orderBy: { name: 'asc' },
+      }),
+      prisma.resourceFile.findMany({
+        where: { folderId: parentId || null },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const foldersData = folders.map((f) => ({
+      id: f.id,
+      name: f.name,
+      parentId: f.parentId,
+      itemCount: f._count.children + f._count.files,
+    }));
+
+    const filesData = files.map((f) => ({
+      id: f.id,
+      originalName: f.originalName,
+      size: f.size,
+      mimeType: f.mimeType,
+      url: getPublicUrl(f.fileName),
+      createdAt: f.createdAt,
+    }));
+
+    sendSuccess(res, { folders: foldersData, files: filesData }, 'Resources retrieved');
+  } catch (error) {
+    console.error('public getResources error:', error);
+    sendError(res, 'Something went wrong.', 500);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/public/resources/folder/:id
+// Returns folder detail with breadcrumb for public site
+// ---------------------------------------------------------------------------
+
+export async function getResourceFolder(req: Request, res: Response): Promise<void> {
+  try {
+    const id = req.params.id as string;
+
+    const folder = await prisma.resourceFolder.findUnique({
+      where: { id },
+      include: {
+        parent: {
+          include: {
+            parent: {
+              include: {
+                parent: {
+                  include: { parent: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!folder) {
+      sendError(res, 'Folder not found.', 404);
+      return;
+    }
+
+    const breadcrumb: { id: string; name: string }[] = [];
+    let current: { id: string; name: string; parent?: any } | null = folder;
+    while (current) {
+      breadcrumb.unshift({ id: current.id, name: current.name });
+      current = current.parent ?? null;
+    }
+
+    sendSuccess(res, { id: folder.id, name: folder.name, breadcrumb }, 'Folder retrieved');
+  } catch (error) {
+    console.error('public getResourceFolder error:', error);
+    sendError(res, 'Something went wrong.', 500);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/public/resources/view/:id — proxy file for viewing (no auth, no form)
+// ---------------------------------------------------------------------------
+
+export async function viewPublicResourceFile(req: Request, res: Response): Promise<void> {
+  try {
+    const id = req.params.id as string;
+
+    const file = await prisma.resourceFile.findUnique({ where: { id } });
+    if (!file) {
+      sendError(res, 'File not found.', 404);
+      return;
+    }
+
+    const r2Response = await streamFromR2(file.fileName);
+
+    if (!r2Response.Body) {
+      sendError(res, 'File not available.', 404);
+      return;
+    }
+
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    if (r2Response.ContentLength) {
+      res.setHeader('Content-Length', r2Response.ContentLength);
+    }
+
+    const stream = r2Response.Body as Readable;
+    stream.pipe(res);
+  } catch (error) {
+    console.error('viewPublicResourceFile error:', error);
+    sendError(res, 'Something went wrong.', 500);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/public/resources/tree/:name
+// Returns a root folder (by name) with all subfolders + their files
+// ---------------------------------------------------------------------------
+
+export async function getResourceTree(req: Request, res: Response): Promise<void> {
+  try {
+    const name = req.params.name as string;
+
+    const folder = await prisma.resourceFolder.findFirst({
+      where: { name, parentId: null },
+    });
+
+    if (!folder) {
+      sendSuccess(res, { sections: [] }, 'Resource tree retrieved');
+      return;
+    }
+
+    // Get subfolders of this root folder
+    const subfolders = await prisma.resourceFolder.findMany({
+      where: { parentId: folder.id },
+      orderBy: { name: 'asc' },
+    });
+
+    // For each subfolder, get its files
+    const sections = await Promise.all(
+      subfolders.map(async (sub) => {
+        const files = await prisma.resourceFile.findMany({
+          where: { folderId: sub.id },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        return {
+          id: sub.id,
+          name: sub.name,
+          files: files.map((f) => ({
+            id: f.id,
+            originalName: f.originalName,
+            size: f.size,
+            mimeType: f.mimeType,
+            url: getPublicUrl(f.fileName),
+            createdAt: f.createdAt,
+          })),
+        };
+      })
+    );
+
+    sendSuccess(res, { id: folder.id, name: folder.name, sections }, 'Resource tree retrieved');
+  } catch (error) {
+    console.error('public getResourceTree error:', error);
+    sendError(res, 'Something went wrong.', 500);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // GET /api/public/summary?year=2025
 // Returns stats for the public database page
 // ---------------------------------------------------------------------------
@@ -175,3 +356,99 @@ export async function getSummary(req: Request, res: Response): Promise<void> {
     sendError(res, 'Something went wrong.', 500);
   }
 }
+
+// ---------------------------------------------------------------------------
+// POST /api/public/download — log info + stream file (resource or department)
+// Body: { fileId, fileType, name, location, contactNo, organization, sex, age }
+// ---------------------------------------------------------------------------
+
+export async function publicDownload(req: Request, res: Response): Promise<void> {
+  try {
+    const {
+      fileId,
+      fileType,
+      name: dlName,
+      location,
+      contactNo,
+      organization,
+      sex,
+      age,
+    } = req.body as Record<string, string>;
+
+    if (!fileId || !fileType || !dlName || !location || !contactNo || !organization || !sex || !age) {
+      sendError(res, 'All fields are required.');
+      return;
+    }
+
+    const ageNum = parseInt(age, 10);
+    if (isNaN(ageNum) || ageNum < 1 || ageNum > 150) {
+      sendError(res, 'Invalid age.');
+      return;
+    }
+
+    if (!['MALE', 'FEMALE'].includes(sex.toUpperCase())) {
+      sendError(res, 'Sex must be MALE or FEMALE.');
+      return;
+    }
+
+    let fileName: string;
+    let r2Key: string;
+    let mimeType: string;
+
+    if (fileType === 'resource') {
+      const file = await prisma.resourceFile.findUnique({ where: { id: fileId } });
+      if (!file) { sendError(res, 'File not found.', 404); return; }
+      fileName = file.originalName;
+      r2Key = file.fileName;
+      mimeType = file.mimeType;
+    } else if (fileType === 'department') {
+      const file = await prisma.file.findUnique({ where: { id: fileId } });
+      if (!file) { sendError(res, 'File not found.', 404); return; }
+      fileName = file.originalName;
+      r2Key = file.fileName;
+      mimeType = file.mimeType;
+    } else {
+      sendError(res, 'Invalid fileType. Must be "resource" or "department".');
+      return;
+    }
+
+    // Save download log
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || null;
+
+    await prisma.downloadLog.create({
+      data: {
+        fileType,
+        fileId,
+        fileName,
+        name: dlName.trim(),
+        location: location.trim(),
+        contactNo: contactNo.trim(),
+        organization: organization.trim(),
+        sex: sex.toUpperCase(),
+        age: ageNum,
+        ip,
+      },
+    });
+
+    // Stream file
+    const r2Response = await streamFromR2(r2Key);
+
+    if (!r2Response.Body) {
+      sendError(res, 'File not available.', 404);
+      return;
+    }
+
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    if (r2Response.ContentLength) {
+      res.setHeader('Content-Length', r2Response.ContentLength);
+    }
+
+    const stream = r2Response.Body as Readable;
+    stream.pipe(res);
+  } catch (error) {
+    console.error('publicDownload error:', error);
+    sendError(res, 'Something went wrong.', 500);
+  }
+}
+

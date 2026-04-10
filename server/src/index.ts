@@ -12,6 +12,7 @@ import uploadRoutes from './routes/upload.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import fileRoutes from './routes/file.routes';
 import publicRoutes from './routes/public.routes';
+import resourceRoutes from './routes/resource.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -39,6 +40,7 @@ app.use('/api/records', recordRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/files', fileRoutes);
+app.use('/api/resources', resourceRoutes);
 
 // Global error handler
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

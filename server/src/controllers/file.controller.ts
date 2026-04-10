@@ -1,10 +1,9 @@
 import { Response } from 'express';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import prisma from '../utils/db';
 import { AuthRequest } from '../types';
 import { sendSuccess, sendError } from '../utils/response';
 import { uploadToR2, deleteFromR2 } from '../utils/s3';
-
-const prisma = new PrismaClient();
 
 function getPublicUrl(key: string): string {
   const base = process.env.R2_PUBLIC_URL || 'https://gaduploads.tanauancity.com';

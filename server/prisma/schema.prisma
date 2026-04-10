@@ -34,9 +34,11 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  records    Record[]
-  uploadLogs UploadLog[]
-  files      File[]
+  records          Record[]
+  uploadLogs       UploadLog[]
+  files            File[]
+  resourceFolders  ResourceFolder[] @relation("resourceFolders")
+  resourceFiles    ResourceFile[]   @relation("resourceFiles")
 
   @@map("users")
 }
@@ -114,4 +116,58 @@ model File {
   @@index([departmentId])
   @@index([departmentId, year])
   @@map("files")
+}
+
+model ResourceFolder {
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?
+  createdById String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent   ResourceFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children ResourceFolder[] @relation("FolderTree")
+  files    ResourceFile[]
+  createdBy User            @relation("resourceFolders", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([parentId])
+  @@map("resource_folders")
+}
+
+model ResourceFile {
+  id           String   @id @default(cuid())
+  fileName     String
+  originalName String
+  size         Int
+  mimeType     String
+  folderId     String?
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  folder     ResourceFolder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  uploadedBy User            @relation("resourceFiles", fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([folderId])
+  @@map("resource_files")
+}
+
+model DownloadLog {
+  id           String   @id @default(cuid())
+  fileType     String   // "resource" or "department"
+  fileId       String
+  fileName     String
+  name         String
+  location     String
+  contactNo    String
+  organization String
+  sex          String   // "MALE" or "FEMALE"
+  age          Int
+  ip           String?
+  createdAt    DateTime @default(now())
+
+  @@index([fileType])
+  @@index([createdAt])
+  @@index([fileId])
+  @@map("download_logs")
 }

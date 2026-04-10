@@ -6,6 +6,7 @@ import {
   Plus,
   BarChart3,
   Clock,
+  FolderDownIcon,
   LogOut,
   ChevronRightIcon,
   SearchIcon,
@@ -177,6 +178,7 @@ export default function Sidebar() {
         <div className="space-y-0.5">
           <NavItem to="/reports" icon={BarChart3} label="Reports" />
           <NavItem to="/upload-history" icon={Clock} label="Upload History" />
+          <NavItem to="/resources" icon={FolderDownIcon} label="GAD Resources" />
         </div>
       </nav>
 

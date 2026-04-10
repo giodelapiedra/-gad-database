@@ -13,6 +13,7 @@ import DepartmentDetailPage from '@/pages/departments/DepartmentDetailPage';
 import AllRecordsPage from '@/pages/records/AllRecordsPage';
 import ReportsPage from '@/pages/reports/ReportsPage';
 import UploadHistoryPage from '@/pages/upload/UploadHistoryPage';
+import ResourcesPage from '@/pages/resources/ResourcesPage';
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
               <Route path="/records" element={<AllRecordsPage />} />
               <Route path="/reports" element={<ReportsPage />} />
               <Route path="/upload-history" element={<UploadHistoryPage />} />
+              <Route path="/resources" element={<ResourcesPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Route>
           </Routes>

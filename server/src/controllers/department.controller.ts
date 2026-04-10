@@ -1,10 +1,8 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import prisma from '../utils/db';
 import { AuthRequest } from '../types';
 import { sendSuccess, sendError } from '../utils/response';
-
-const prisma = new PrismaClient();
 
 const createSchema = z.object({
   name: z.string().min(3, 'Name must be at least 3 characters'),

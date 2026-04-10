@@ -1,12 +1,10 @@
 import { Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+import prisma from '../utils/db';
 import { AuthRequest, Role } from '../types';
 import { generateToken } from '../utils/jwt';
 import { sendSuccess, sendError } from '../utils/response';
-
-const prisma = new PrismaClient();
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),

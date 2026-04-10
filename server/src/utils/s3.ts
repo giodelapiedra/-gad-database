@@ -42,6 +42,16 @@ export async function getR2Url(key: string): Promise<string> {
   return getSignedUrl(getClient(), command, { expiresIn: 3600 });
 }
 
+export async function streamFromR2(key: string) {
+  const response = await getClient().send(
+    new GetObjectCommand({
+      Bucket: getBucket(),
+      Key: key,
+    })
+  );
+  return response;
+}
+
 export async function deleteFromR2(key: string): Promise<void> {
   await getClient().send(
     new DeleteObjectCommand({

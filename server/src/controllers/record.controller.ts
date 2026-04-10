@@ -1,11 +1,10 @@
 import { Response } from 'express';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import * as XLSX from 'xlsx';
+import prisma from '../utils/db';
 import { AuthRequest } from '../types';
 import { sendSuccess, sendError } from '../utils/response';
-
-const prisma = new PrismaClient();
 
 // ---------------------------------------------------------------------------
 // Zod schemas

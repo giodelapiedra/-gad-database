@@ -1,11 +1,10 @@
 import { Response } from 'express';
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import * as XLSX from 'xlsx';
+import prisma from '../utils/db';
 import { AuthRequest } from '../types';
 import { sendSuccess, sendError } from '../utils/response';
 import { parseExcelFile } from '../utils/excel.parser';
-
-const prisma = new PrismaClient();
 
 // ---------------------------------------------------------------------------
 // POST /api/upload

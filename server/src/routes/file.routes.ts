@@ -8,9 +8,18 @@ import { Role } from '../types';
 
 const router = Router();
 
+const BLOCKED_EXTS = /\.(exe|bat|cmd|sh|msi|com|scr|ps1|vbs|wsf|jar)$/i;
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (BLOCKED_EXTS.test(file.originalname)) {
+      cb(new Error('Executable files are not allowed.'));
+    } else {
+      cb(null, true);
+    }
+  },
 });
 
 function handleMulterUpload(req: Request, res: Response, next: NextFunction): void {
