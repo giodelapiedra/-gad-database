@@ -211,11 +211,17 @@ export default function ReportsPage() {
                   <Cell key={idx} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value: number, name: string) => [`${value} download${value !== 1 ? 's' : ''}`, name]} />
+              <Tooltip
+                formatter={(value, name) => {
+                  const n = value == null ? 0 : typeof value === 'number' ? value : Number(value) || 0;
+                  const nm = name == null ? '' : String(name);
+                  return [`${n} download${n !== 1 ? 's' : ''}`, nm];
+                }}
+              />
               <Legend
                 verticalAlign="bottom"
                 height={36}
-                formatter={(value: string, entry: any) => {
+                formatter={(value: string) => {
                   const item = sexData.find((d) => d.name === value);
                   const total = sexData.reduce((s, d) => s + d.value, 0);
                   const pct = item && total > 0 ? Math.round((item.value / total) * 100) : 0;
@@ -272,7 +278,13 @@ export default function ReportsPage() {
                   <Cell key={idx} fill={entry.color} />
                 ))}
               </Pie>
-              <Tooltip formatter={(value: number, name: string) => [`${value} download${value !== 1 ? 's' : ''}`, name]} />
+              <Tooltip
+                formatter={(value, name) => {
+                  const n = value == null ? 0 : typeof value === 'number' ? value : Number(value) || 0;
+                  const nm = name == null ? '' : String(name);
+                  return [`${n} download${n !== 1 ? 's' : ''}`, nm];
+                }}
+              />
               <Legend
                 verticalAlign="bottom"
                 height={36}

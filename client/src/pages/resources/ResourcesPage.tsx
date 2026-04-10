@@ -115,8 +115,6 @@ export default function ResourcesPage() {
   // Queries
   const { data, isLoading } = useGetFolderContents(currentFolderId);
   const { data: folderDetail } = useGetFolder(currentFolderId);
-  // Also fetch root folders for the move picker
-  const { data: rootData } = useGetFolderContents(null);
 
   // Mutations
   const createFolder = useCreateFolder();
@@ -125,7 +123,6 @@ export default function ResourcesPage() {
   const uploadFiles = useUploadResourceFiles();
   const renameFileMut = useRenameResourceFile();
   const deleteFile = useDeleteResourceFile();
-  const moveResources = useMoveResources();
   const bulkDelete = useBulkDeleteResources();
 
   const folders = data?.folders ?? [];
