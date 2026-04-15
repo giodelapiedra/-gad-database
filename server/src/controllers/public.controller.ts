@@ -83,7 +83,11 @@ export async function getFiles(req: Request, res: Response): Promise<void> {
     }
 
     if (search) {
-      where.originalName = { contains: search, mode: 'insensitive' };
+      where.OR = [
+        { originalName: { contains: search, mode: 'insensitive' } },
+        { department: { code: { contains: search, mode: 'insensitive' } } },
+        { department: { name: { contains: search, mode: 'insensitive' } } },
+      ];
     }
 
     const [files, total] = await Promise.all([
