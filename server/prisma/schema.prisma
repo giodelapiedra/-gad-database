@@ -125,6 +125,7 @@ model ResourceFolder {
   createdById String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   parent   ResourceFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
   children ResourceFolder[] @relation("FolderTree")
@@ -132,6 +133,7 @@ model ResourceFolder {
   createdBy User            @relation("resourceFolders", fields: [createdById], references: [id], onDelete: Cascade)
 
   @@index([parentId])
+  @@index([deletedAt])
   @@map("resource_folders")
 }
 
@@ -144,11 +146,13 @@ model ResourceFile {
   folderId     String?
   uploadedById String
   createdAt    DateTime @default(now())
+  deletedAt    DateTime?
 
   folder     ResourceFolder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
   uploadedBy User            @relation("resourceFiles", fields: [uploadedById], references: [id], onDelete: Cascade)
 
   @@index([folderId])
+  @@index([deletedAt])
   @@map("resource_files")
 }
 

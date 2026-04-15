@@ -16,6 +16,8 @@ import {
   MoveIcon,
   CheckSquareIcon,
   XIcon,
+  RotateCcwIcon,
+  ArrowLeftIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -53,6 +55,10 @@ import {
   useDeleteResourceFile,
   useMoveResources,
   useBulkDeleteResources,
+  useGetTrashContents,
+  useRestoreResources,
+  usePermanentDeleteResources,
+  useEmptyTrash,
   type ResourceFile,
   type ResourceFolder,
 } from '@/hooks/useResources';
@@ -90,6 +96,9 @@ export default function ResourcesPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
   const canEdit = user?.role === 'ADMIN' || user?.role === 'ENCODER';
+
+  // View mode: regular files view or recycle bin
+  const [viewMode, setViewMode] = useState<'files' | 'trash'>('files');
 
   // Navigation state
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -288,6 +297,14 @@ export default function ResourcesPage() {
     }
   };
 
+  if (viewMode === 'trash' && isAdmin) {
+    return (
+      <DashboardLayout title="Recycle Bin" breadcrumb="Tools / GAD Resources / Recycle Bin">
+        <TrashView onBack={() => setViewMode('files')} />
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout title="GAD Resources" breadcrumb="Tools / GAD Resources">
       {/* Breadcrumb */}
@@ -351,6 +368,21 @@ export default function ResourcesPage() {
               className="hidden"
               onChange={handleFileUpload}
             />
+          </>
+        )}
+
+        {isAdmin && (
+          <>
+            <div className="flex-1" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setViewMode('trash')}
+              title="View Recycle Bin"
+            >
+              <Trash2Icon className="mr-1.5 size-4" />
+              Recycle Bin
+            </Button>
           </>
         )}
       </div>
@@ -632,11 +664,11 @@ export default function ResourcesPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {deleteTarget?.type === 'folder' ? 'folder' : 'file'}</AlertDialogTitle>
+            <AlertDialogTitle>Move {deleteTarget?.type === 'folder' ? 'folder' : 'file'} to Recycle Bin</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{deleteTarget?.name}"?
-              {deleteTarget?.type === 'folder' && ' All contents inside will also be deleted.'}
-              {' '}This action cannot be undone.
+              "{deleteTarget?.name}" will be moved to the Recycle Bin.
+              {deleteTarget?.type === 'folder' && ' All contents inside will also be moved.'}
+              {' '}You can restore it later from the Recycle Bin.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -646,7 +678,7 @@ export default function ResourcesPage() {
               onClick={handleDelete}
               disabled={deleteFolder.isPending || deleteFile.isPending}
             >
-              {deleteFolder.isPending || deleteFile.isPending ? 'Deleting...' : 'Delete'}
+              {deleteFolder.isPending || deleteFile.isPending ? 'Moving...' : 'Move to Recycle Bin'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -656,11 +688,11 @@ export default function ResourcesPage() {
       <AlertDialog open={bulkDeleteOpen} onOpenChange={(o) => !o && setBulkDeleteOpen(false)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {totalSelected} item{totalSelected !== 1 ? 's' : ''}</AlertDialogTitle>
+            <AlertDialogTitle>Move {totalSelected} item{totalSelected !== 1 ? 's' : ''} to Recycle Bin</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete {totalSelected} selected item{totalSelected !== 1 ? 's' : ''}?
-              {selectedFolderIds.size > 0 && ' All contents inside selected folders will also be deleted.'}
-              {' '}This action cannot be undone.
+              {totalSelected} selected item{totalSelected !== 1 ? 's' : ''} will be moved to the Recycle Bin.
+              {selectedFolderIds.size > 0 && ' All contents inside selected folders will also be moved.'}
+              {' '}You can restore them later from the Recycle Bin.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -670,7 +702,7 @@ export default function ResourcesPage() {
               onClick={handleBulkDelete}
               disabled={bulkDelete.isPending}
             >
-              {bulkDelete.isPending ? 'Deleting...' : `Delete ${totalSelected} item${totalSelected !== 1 ? 's' : ''}`}
+              {bulkDelete.isPending ? 'Moving...' : `Move ${totalSelected} item${totalSelected !== 1 ? 's' : ''}`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -835,5 +867,405 @@ function MoveToFolderDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Recycle Bin View
+// ---------------------------------------------------------------------------
+
+function TrashView({ onBack }: { onBack: () => void }) {
+  const { data, isLoading } = useGetTrashContents(true);
+  const restore = useRestoreResources();
+  const purge = usePermanentDeleteResources();
+  const empty = useEmptyTrash();
+
+  const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
+  const [purgeOpen, setPurgeOpen] = useState(false);
+  const [purgeTarget, setPurgeTarget] = useState<{ type: 'folder' | 'file'; id: string; name: string } | null>(null);
+  const [emptyOpen, setEmptyOpen] = useState(false);
+
+  const folders = data?.folders ?? [];
+  const files = data?.files ?? [];
+  const totalItems = folders.length + files.length;
+  const totalSelected = selectedFolderIds.size + selectedFileIds.size;
+
+  const clearSelection = () => {
+    setSelectedFolderIds(new Set());
+    setSelectedFileIds(new Set());
+  };
+
+  const toggleFolder = (id: string) => {
+    setSelectedFolderIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleFile = (id: string) => {
+    setSelectedFileIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleRestoreSingle = async (type: 'folder' | 'file', id: string) => {
+    try {
+      await restore.mutateAsync({
+        folderIds: type === 'folder' ? [id] : undefined,
+        fileIds: type === 'file' ? [id] : undefined,
+      });
+      toast.success(`${type === 'folder' ? 'Folder' : 'File'} restored`);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to restore'));
+    }
+  };
+
+  const handleRestoreBulk = async () => {
+    try {
+      const result = await restore.mutateAsync({
+        folderIds: selectedFolderIds.size > 0 ? Array.from(selectedFolderIds) : undefined,
+        fileIds: selectedFileIds.size > 0 ? Array.from(selectedFileIds) : undefined,
+      });
+      toast.success(`Restored ${result.restoredFiles + result.restoredFolders} item(s)`);
+      clearSelection();
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to restore items'));
+    }
+  };
+
+  const handlePurgeSingle = async () => {
+    if (!purgeTarget) return;
+    try {
+      await purge.mutateAsync({
+        folderIds: purgeTarget.type === 'folder' ? [purgeTarget.id] : undefined,
+        fileIds: purgeTarget.type === 'file' ? [purgeTarget.id] : undefined,
+      });
+      toast.success(`${purgeTarget.type === 'folder' ? 'Folder' : 'File'} permanently deleted`);
+      setPurgeTarget(null);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to delete'));
+    }
+  };
+
+  const handlePurgeBulk = async () => {
+    try {
+      const result = await purge.mutateAsync({
+        folderIds: selectedFolderIds.size > 0 ? Array.from(selectedFolderIds) : undefined,
+        fileIds: selectedFileIds.size > 0 ? Array.from(selectedFileIds) : undefined,
+      });
+      toast.success(`Permanently deleted ${result.deletedFiles + result.deletedFolders} item(s)`);
+      clearSelection();
+      setPurgeOpen(false);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to delete items'));
+    }
+  };
+
+  const handleEmpty = async () => {
+    try {
+      await empty.mutateAsync();
+      toast.success('Recycle bin emptied');
+      clearSelection();
+      setEmptyOpen(false);
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Failed to empty recycle bin'));
+    }
+  };
+
+  return (
+    <>
+      {/* Header */}
+      <div className="mb-4 flex items-center gap-2">
+        <Button variant="outline" size="sm" onClick={onBack}>
+          <ArrowLeftIcon className="mr-1.5 size-4" />
+          Back to Resources
+        </Button>
+        <div className="flex-1" />
+        {totalItems > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+            onClick={() => setEmptyOpen(true)}
+          >
+            <Trash2Icon className="mr-1.5 size-4" />
+            Empty Recycle Bin
+          </Button>
+        )}
+      </div>
+
+      {/* Info banner */}
+      <div className="mb-4 rounded-lg border border-[#EBEBEB] bg-[#FAFAFA] px-4 py-2.5 text-[12px] text-[#71717A]">
+        Items here were moved from Resources. Restoring brings them back; permanent delete cannot be undone.
+      </div>
+
+      {/* Bulk action bar */}
+      {totalSelected > 0 && (
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-[#18181B] bg-[#18181B] px-4 py-2.5 text-white">
+          <span className="text-[13px] font-medium">
+            {totalSelected} item{totalSelected !== 1 ? 's' : ''} selected
+          </span>
+          <div className="mx-2 h-4 w-px bg-white/20" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-white hover:bg-white/10 hover:text-white"
+            onClick={handleRestoreBulk}
+            disabled={restore.isPending}
+          >
+            <RotateCcwIcon className="mr-1.5 size-4" />
+            {restore.isPending ? 'Restoring...' : 'Restore'}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-red-300 hover:bg-white/10 hover:text-red-200"
+            onClick={() => setPurgeOpen(true)}
+          >
+            <Trash2Icon className="mr-1.5 size-4" />
+            Delete permanently
+          </Button>
+          <div className="flex-1" />
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="text-white/60 hover:bg-white/10 hover:text-white"
+            onClick={clearSelection}
+          >
+            <XIcon className="size-4" />
+          </Button>
+        </div>
+      )}
+
+      {/* Content */}
+      {isLoading ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-28 rounded-lg" />
+          ))}
+        </div>
+      ) : totalItems === 0 ? (
+        <EmptyState
+          icon={Trash2Icon}
+          title="Recycle bin is empty"
+          subtitle="Deleted folders and files will appear here."
+        />
+      ) : (
+        <div className="space-y-6">
+          {folders.length > 0 && (
+            <div>
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
+                Folders ({folders.length})
+              </p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {folders.map((folder) => {
+                  const isSelected = selectedFolderIds.has(folder.id);
+                  return (
+                    <div
+                      key={folder.id}
+                      className={`group relative flex cursor-pointer flex-col items-center gap-2 rounded-lg border p-4 transition-all hover:shadow-sm ${
+                        isSelected
+                          ? 'border-[#18181B] bg-[#F4F4F5] ring-1 ring-[#18181B]'
+                          : 'border-[#EBEBEB] bg-white hover:border-[#D4D4D8]'
+                      }`}
+                      onClick={() => toggleFolder(folder.id)}
+                    >
+                      <div
+                        className={`absolute left-2 top-2 flex size-5 items-center justify-center rounded border transition-all ${
+                          isSelected
+                            ? 'border-[#18181B] bg-[#18181B]'
+                            : 'border-[#D4D4D8] bg-white opacity-0 group-hover:opacity-100'
+                        }`}
+                      >
+                        {isSelected && (
+                          <svg className="size-3 text-white" viewBox="0 0 12 12" fill="none">
+                            <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </div>
+
+                      <FolderIcon className="size-10 text-amber-300/70" fill="currentColor" />
+                      <p className="w-full truncate text-center text-[13px] font-medium text-[#52525B]" title={folder.name}>
+                        {folder.name}
+                      </p>
+                      <p className="text-[11px] text-[#A1A1AA]">
+                        Deleted {formatDate(folder.deletedAt)}
+                      </p>
+
+                      <div className="absolute right-1.5 top-1.5 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRestoreSingle('folder', folder.id);
+                          }}
+                          title="Restore"
+                          disabled={restore.isPending}
+                        >
+                          <RotateCcwIcon className="size-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPurgeTarget({ type: 'folder', id: folder.id, name: folder.name });
+                          }}
+                          title="Delete permanently"
+                        >
+                          <Trash2Icon className="size-3 text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {files.length > 0 && (
+            <div>
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
+                Files ({files.length})
+              </p>
+              <div className="rounded-[10px] border border-[#EBEBEB] bg-white">
+                <div className="divide-y divide-[#F4F4F5]">
+                  {files.map((file) => {
+                    const isSelected = selectedFileIds.has(file.id);
+                    return (
+                      <div
+                        key={file.id}
+                        className={`group flex items-center gap-3 px-4 py-3 transition-colors ${
+                          isSelected ? 'bg-[#F4F4F5]' : 'hover:bg-[#FAFAFA]'
+                        }`}
+                      >
+                        <div
+                          className={`flex size-5 shrink-0 cursor-pointer items-center justify-center rounded border transition-all ${
+                            isSelected
+                              ? 'border-[#18181B] bg-[#18181B]'
+                              : 'border-[#D4D4D8] bg-white opacity-0 group-hover:opacity-100'
+                          }`}
+                          onClick={() => toggleFile(file.id)}
+                        >
+                          {isSelected && (
+                            <svg className="size-3 text-white" viewBox="0 0 12 12" fill="none">
+                              <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                        </div>
+
+                        {getFileIcon(file.mimeType)}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[13px] font-medium text-[#52525B]" title={file.originalName}>
+                            {file.originalName}
+                          </p>
+                          <p className="text-[11px] text-[#A1A1AA]">
+                            {formatSize(file.size)} &middot; Deleted {formatDate(file.deletedAt)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => handleRestoreSingle('file', file.id)}
+                            title="Restore"
+                            disabled={restore.isPending}
+                          >
+                            <RotateCcwIcon className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => setPurgeTarget({ type: 'file', id: file.id, name: file.originalName })}
+                            title="Delete permanently"
+                          >
+                            <Trash2Icon className="size-3.5 text-red-500" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Single-item permanent delete confirmation */}
+      <AlertDialog open={!!purgeTarget} onOpenChange={(o) => !o && setPurgeTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently delete {purgeTarget?.type === 'folder' ? 'folder' : 'file'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              "{purgeTarget?.name}" will be deleted permanently.
+              {purgeTarget?.type === 'folder' && ' All contents inside will also be deleted.'}
+              {' '}This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handlePurgeSingle}
+              disabled={purge.isPending}
+            >
+              {purge.isPending ? 'Deleting...' : 'Delete permanently'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk permanent delete confirmation */}
+      <AlertDialog open={purgeOpen} onOpenChange={(o) => !o && setPurgeOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Permanently delete {totalSelected} item{totalSelected !== 1 ? 's' : ''}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {totalSelected} item{totalSelected !== 1 ? 's' : ''} will be deleted permanently.
+              {selectedFolderIds.size > 0 && ' All contents inside selected folders will also be deleted.'}
+              {' '}This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handlePurgeBulk}
+              disabled={purge.isPending}
+            >
+              {purge.isPending ? 'Deleting...' : 'Delete permanently'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Empty recycle bin confirmation */}
+      <AlertDialog open={emptyOpen} onOpenChange={(o) => !o && setEmptyOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Empty Recycle Bin</AlertDialogTitle>
+            <AlertDialogDescription>
+              All items in the Recycle Bin will be permanently deleted. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleEmpty}
+              disabled={empty.isPending}
+            >
+              {empty.isPending ? 'Emptying...' : 'Empty Recycle Bin'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

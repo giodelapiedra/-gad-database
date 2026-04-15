@@ -13,6 +13,10 @@ import {
   bulkDeleteResources,
   viewResourceFile,
   downloadResourceFile,
+  getTrashContents,
+  restoreResources,
+  permanentDeleteResources,
+  emptyTrash,
 } from '../controllers/resource.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { roleGuard } from '../middleware/role.middleware';
@@ -67,5 +71,11 @@ router.get('/files/:id/download', authenticate as RequestHandler, downloadResour
 // Bulk operations
 router.post('/move', authenticate as RequestHandler, roleGuard(Role.ADMIN) as RequestHandler, moveResources as RequestHandler);
 router.post('/bulk-delete', authenticate as RequestHandler, roleGuard(Role.ADMIN) as RequestHandler, bulkDeleteResources as RequestHandler);
+
+// Recycle Bin (admin only)
+router.get('/trash', authenticate as RequestHandler, roleGuard(Role.ADMIN) as RequestHandler, getTrashContents as RequestHandler);
+router.post('/trash/restore', authenticate as RequestHandler, roleGuard(Role.ADMIN) as RequestHandler, restoreResources as RequestHandler);
+router.post('/trash/purge', authenticate as RequestHandler, roleGuard(Role.ADMIN) as RequestHandler, permanentDeleteResources as RequestHandler);
+router.post('/trash/empty', authenticate as RequestHandler, roleGuard(Role.ADMIN) as RequestHandler, emptyTrash as RequestHandler);
 
 export default router;

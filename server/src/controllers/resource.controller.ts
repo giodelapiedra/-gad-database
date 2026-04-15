@@ -10,6 +10,39 @@ function getPublicUrl(key: string): string {
   return `${base}/${key}`;
 }
 
+// Delete R2 keys in parallel; errors are logged but do not abort.
+async function deleteR2Keys(keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  const results = await Promise.allSettled(keys.map((k) => deleteFromR2(k)));
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') console.warn('Failed to delete R2 key:', keys[i], r.reason);
+  });
+}
+
+// Recursively collect descendant folder ids (only non-deleted, unless includeDeleted)
+async function collectDescendantFolderIds(
+  rootId: string,
+  includeDeleted = false,
+): Promise<string[]> {
+  const ids: string[] = [];
+  const queue: string[] = [rootId];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const children = await prisma.resourceFolder.findMany({
+      where: {
+        parentId: current,
+        ...(includeDeleted ? {} : { deletedAt: null }),
+      },
+      select: { id: true },
+    });
+    for (const c of children) {
+      ids.push(c.id);
+      queue.push(c.id);
+    }
+  }
+  return ids;
+}
+
 // ---------------------------------------------------------------------------
 // GET /api/resources/folders?parentId=xxx  — list folders (+ files) at level
 // ---------------------------------------------------------------------------
@@ -18,19 +51,22 @@ export async function getFolderContents(req: AuthRequest, res: Response): Promis
   try {
     const { parentId } = req.query as Record<string, string | undefined>;
 
-    const where = { parentId: parentId || null };
-
     const [folders, files] = await Promise.all([
       prisma.resourceFolder.findMany({
-        where,
+        where: { parentId: parentId || null, deletedAt: null },
         include: {
-          _count: { select: { children: true, files: true } },
+          _count: {
+            select: {
+              children: { where: { deletedAt: null } },
+              files: { where: { deletedAt: null } },
+            },
+          },
           createdBy: { select: { name: true } },
         },
         orderBy: { name: 'asc' },
       }),
       prisma.resourceFile.findMany({
-        where: { folderId: parentId || null },
+        where: { folderId: parentId || null, deletedAt: null },
         include: { uploadedBy: { select: { name: true } } },
         orderBy: { createdAt: 'desc' },
       }),
@@ -56,8 +92,8 @@ export async function getFolder(req: AuthRequest, res: Response): Promise<void> 
   try {
     const id = req.params.id as string;
 
-    const folder = await prisma.resourceFolder.findUnique({
-      where: { id },
+    const folder = await prisma.resourceFolder.findFirst({
+      where: { id, deletedAt: null },
       include: {
         parent: {
           include: {
@@ -108,16 +144,18 @@ export async function createFolder(req: AuthRequest, res: Response): Promise<voi
     }
 
     if (parentId) {
-      const parent = await prisma.resourceFolder.findUnique({ where: { id: parentId } });
+      const parent = await prisma.resourceFolder.findFirst({
+        where: { id: parentId, deletedAt: null },
+      });
       if (!parent) {
         sendError(res, 'Parent folder not found.', 404);
         return;
       }
     }
 
-    // Check for duplicate folder name at the same level
+    // Check for duplicate folder name at the same level (ignoring trashed)
     const duplicate = await prisma.resourceFolder.findFirst({
-      where: { name: name.trim(), parentId: parentId || null },
+      where: { name: name.trim(), parentId: parentId || null, deletedAt: null },
     });
     if (duplicate) {
       sendError(res, 'A folder with this name already exists here.');
@@ -131,7 +169,12 @@ export async function createFolder(req: AuthRequest, res: Response): Promise<voi
         createdById: req.user!.id,
       },
       include: {
-        _count: { select: { children: true, files: true } },
+        _count: {
+          select: {
+            children: { where: { deletedAt: null } },
+            files: { where: { deletedAt: null } },
+          },
+        },
         createdBy: { select: { name: true } },
       },
     });
@@ -157,7 +200,9 @@ export async function renameFolder(req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    const existing = await prisma.resourceFolder.findUnique({ where: { id } });
+    const existing = await prisma.resourceFolder.findFirst({
+      where: { id, deletedAt: null },
+    });
     if (!existing) {
       sendError(res, 'Folder not found.', 404);
       return;
@@ -165,7 +210,12 @@ export async function renameFolder(req: AuthRequest, res: Response): Promise<voi
 
     // Check for duplicate folder name at the same level
     const duplicate = await prisma.resourceFolder.findFirst({
-      where: { name: name.trim(), parentId: existing.parentId, id: { not: id } },
+      where: {
+        name: name.trim(),
+        parentId: existing.parentId,
+        deletedAt: null,
+        id: { not: id },
+      },
     });
     if (duplicate) {
       sendError(res, 'A folder with this name already exists here.');
@@ -185,53 +235,37 @@ export async function renameFolder(req: AuthRequest, res: Response): Promise<voi
 }
 
 // ---------------------------------------------------------------------------
-// DELETE /api/resources/folders/:id — delete folder (cascades)
+// DELETE /api/resources/folders/:id — soft delete folder (move to trash)
 // ---------------------------------------------------------------------------
 
 export async function deleteFolder(req: AuthRequest, res: Response): Promise<void> {
   try {
     const id = req.params.id as string;
 
-    const folder = await prisma.resourceFolder.findUnique({ where: { id } });
+    const folder = await prisma.resourceFolder.findFirst({
+      where: { id, deletedAt: null },
+    });
     if (!folder) {
       sendError(res, 'Folder not found.', 404);
       return;
     }
 
-    // Recursively collect all file keys for R2 cleanup
-    async function collectFileKeys(folderId: string): Promise<string[]> {
-      const keys: string[] = [];
-      const files = await prisma.resourceFile.findMany({
-        where: { folderId },
-        select: { fileName: true },
-      });
-      keys.push(...files.map((f) => f.fileName));
+    const timestamp = new Date();
+    const descendantIds = await collectDescendantFolderIds(id, false);
+    const allFolderIds = [id, ...descendantIds];
 
-      const subfolders = await prisma.resourceFolder.findMany({
-        where: { parentId: folderId },
-        select: { id: true },
-      });
-      for (const sub of subfolders) {
-        keys.push(...(await collectFileKeys(sub.id)));
-      }
-      return keys;
-    }
+    await prisma.$transaction([
+      prisma.resourceFolder.updateMany({
+        where: { id: { in: allFolderIds }, deletedAt: null },
+        data: { deletedAt: timestamp },
+      }),
+      prisma.resourceFile.updateMany({
+        where: { folderId: { in: allFolderIds }, deletedAt: null },
+        data: { deletedAt: timestamp },
+      }),
+    ]);
 
-    const fileKeys = await collectFileKeys(id);
-
-    // Delete from R2
-    for (const key of fileKeys) {
-      try {
-        await deleteFromR2(key);
-      } catch (e) {
-        console.warn('Failed to delete R2 key:', key, e);
-      }
-    }
-
-    // Cascade delete from DB
-    await prisma.resourceFolder.delete({ where: { id } });
-
-    sendSuccess(res, null, 'Folder deleted');
+    sendSuccess(res, null, 'Folder moved to recycle bin');
   } catch (error) {
     console.error('deleteFolder error:', error);
     sendError(res, 'Something went wrong.', 500);
@@ -254,7 +288,9 @@ export async function uploadResourceFiles(req: AuthRequest, res: Response): Prom
     const folderId = req.body.folderId as string | undefined;
 
     if (folderId) {
-      const folder = await prisma.resourceFolder.findUnique({ where: { id: folderId } });
+      const folder = await prisma.resourceFolder.findFirst({
+        where: { id: folderId, deletedAt: null },
+      });
       if (!folder) {
         sendError(res, 'Folder not found.', 404);
         return;
@@ -305,7 +341,9 @@ export async function renameResourceFile(req: AuthRequest, res: Response): Promi
       return;
     }
 
-    const existing = await prisma.resourceFile.findUnique({ where: { id } });
+    const existing = await prisma.resourceFile.findFirst({
+      where: { id, deletedAt: null },
+    });
     if (!existing) {
       sendError(res, 'File not found.', 404);
       return;
@@ -325,23 +363,27 @@ export async function renameResourceFile(req: AuthRequest, res: Response): Promi
 }
 
 // ---------------------------------------------------------------------------
-// DELETE /api/resources/files/:id
+// DELETE /api/resources/files/:id — soft delete file (move to trash)
 // ---------------------------------------------------------------------------
 
 export async function deleteResourceFile(req: AuthRequest, res: Response): Promise<void> {
   try {
     const id = req.params.id as string;
 
-    const file = await prisma.resourceFile.findUnique({ where: { id } });
+    const file = await prisma.resourceFile.findFirst({
+      where: { id, deletedAt: null },
+    });
     if (!file) {
       sendError(res, 'File not found.', 404);
       return;
     }
 
-    await deleteFromR2(file.fileName);
-    await prisma.resourceFile.delete({ where: { id } });
+    await prisma.resourceFile.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
 
-    sendSuccess(res, null, 'File deleted');
+    sendSuccess(res, null, 'File moved to recycle bin');
   } catch (error) {
     console.error('deleteResourceFile error:', error);
     sendError(res, 'Something went wrong.', 500);
@@ -363,9 +405,11 @@ export async function moveResources(req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
-    // Validate target folder exists (null = root)
+    // Validate target folder exists and is not trashed (null = root)
     if (targetFolderId) {
-      const target = await prisma.resourceFolder.findUnique({ where: { id: targetFolderId } });
+      const target = await prisma.resourceFolder.findFirst({
+        where: { id: targetFolderId, deletedAt: null },
+      });
       if (!target) {
         sendError(res, 'Target folder not found.', 404);
         return;
@@ -400,7 +444,7 @@ export async function moveResources(req: AuthRequest, res: Response): Promise<vo
 
     if (fileIds && fileIds.length > 0) {
       const result = await prisma.resourceFile.updateMany({
-        where: { id: { in: fileIds } },
+        where: { id: { in: fileIds }, deletedAt: null },
         data: { folderId: targetFolderId || null },
       });
       movedFiles = result.count;
@@ -408,7 +452,7 @@ export async function moveResources(req: AuthRequest, res: Response): Promise<vo
 
     if (folderIds && folderIds.length > 0) {
       const result = await prisma.resourceFolder.updateMany({
-        where: { id: { in: folderIds } },
+        where: { id: { in: folderIds }, deletedAt: null },
         data: { parentId: targetFolderId || null },
       });
       movedFolders = result.count;
@@ -422,7 +466,7 @@ export async function moveResources(req: AuthRequest, res: Response): Promise<vo
 }
 
 // ---------------------------------------------------------------------------
-// POST /api/resources/bulk-delete — delete multiple files + folders
+// POST /api/resources/bulk-delete — soft delete multiple files + folders
 // ---------------------------------------------------------------------------
 
 export async function bulkDeleteResources(req: AuthRequest, res: Response): Promise<void> {
@@ -435,69 +479,48 @@ export async function bulkDeleteResources(req: AuthRequest, res: Response): Prom
       return;
     }
 
+    const timestamp = new Date();
     let deletedFiles = 0;
     let deletedFolders = 0;
 
-    // Delete files from R2 + DB
     if (fileIds && fileIds.length > 0) {
-      const files = await prisma.resourceFile.findMany({
-        where: { id: { in: fileIds } },
-        select: { id: true, fileName: true },
-      });
-
-      for (const file of files) {
-        try {
-          await deleteFromR2(file.fileName);
-        } catch (e) {
-          console.warn('Failed to delete R2 key:', file.fileName, e);
-        }
-      }
-
-      const result = await prisma.resourceFile.deleteMany({
-        where: { id: { in: fileIds } },
+      const result = await prisma.resourceFile.updateMany({
+        where: { id: { in: fileIds }, deletedAt: null },
+        data: { deletedAt: timestamp },
       });
       deletedFiles = result.count;
     }
 
-    // Delete folders (cascade handles children in DB, but clean R2 first)
     if (folderIds && folderIds.length > 0) {
-      async function collectFileKeys(folderId: string): Promise<string[]> {
-        const keys: string[] = [];
-        const files = await prisma.resourceFile.findMany({
-          where: { folderId },
-          select: { fileName: true },
+      // Collect all descendant folder ids so we cascade the soft delete
+      const allFolderIds = new Set<string>();
+      for (const folderId of folderIds) {
+        const exists = await prisma.resourceFolder.findFirst({
+          where: { id: folderId, deletedAt: null },
         });
-        keys.push(...files.map((f) => f.fileName));
-
-        const subfolders = await prisma.resourceFolder.findMany({
-          where: { parentId: folderId },
-          select: { id: true },
-        });
-        for (const sub of subfolders) {
-          keys.push(...(await collectFileKeys(sub.id)));
-        }
-        return keys;
+        if (!exists) continue;
+        allFolderIds.add(folderId);
+        const descendants = await collectDescendantFolderIds(folderId, false);
+        descendants.forEach((d) => allFolderIds.add(d));
       }
 
-      for (const folderId of folderIds) {
-        const exists = await prisma.resourceFolder.findUnique({ where: { id: folderId } });
-        if (!exists) continue;
-
-        const fileKeys = await collectFileKeys(folderId);
-        for (const key of fileKeys) {
-          try {
-            await deleteFromR2(key);
-          } catch (e) {
-            console.warn('Failed to delete R2 key:', key, e);
-          }
-        }
-
-        await prisma.resourceFolder.delete({ where: { id: folderId } });
-        deletedFolders++;
+      if (allFolderIds.size > 0) {
+        const idArray = Array.from(allFolderIds);
+        await prisma.$transaction([
+          prisma.resourceFolder.updateMany({
+            where: { id: { in: idArray }, deletedAt: null },
+            data: { deletedAt: timestamp },
+          }),
+          prisma.resourceFile.updateMany({
+            where: { folderId: { in: idArray }, deletedAt: null },
+            data: { deletedAt: timestamp },
+          }),
+        ]);
+        deletedFolders = folderIds.filter((id) => allFolderIds.has(id)).length;
       }
     }
 
-    sendSuccess(res, { deletedFiles, deletedFolders }, `Deleted ${deletedFiles + deletedFolders} item(s)`);
+    sendSuccess(res, { deletedFiles, deletedFolders }, `Moved ${deletedFiles + deletedFolders} item(s) to recycle bin`);
   } catch (error) {
     console.error('bulkDeleteResources error:', error);
     sendError(res, 'Something went wrong.', 500);
@@ -511,7 +534,9 @@ export async function bulkDeleteResources(req: AuthRequest, res: Response): Prom
 export async function viewResourceFile(req: AuthRequest, res: Response): Promise<void> {
   try {
     const id = req.params.id as string;
-    const file = await prisma.resourceFile.findUnique({ where: { id } });
+    const file = await prisma.resourceFile.findFirst({
+      where: { id, deletedAt: null },
+    });
 
     if (!file) {
       sendError(res, 'File not found.', 404);
@@ -533,7 +558,9 @@ export async function downloadResourceFile(req: AuthRequest, res: Response): Pro
   try {
     const id = req.params.id as string;
 
-    const file = await prisma.resourceFile.findUnique({ where: { id } });
+    const file = await prisma.resourceFile.findFirst({
+      where: { id, deletedAt: null },
+    });
     if (!file) {
       sendError(res, 'File not found.', 404);
       return;
@@ -556,6 +583,256 @@ export async function downloadResourceFile(req: AuthRequest, res: Response): Pro
     stream.pipe(res);
   } catch (error) {
     console.error('downloadResourceFile error:', error);
+    sendError(res, 'Something went wrong.', 500);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/resources/trash — list top-level trashed folders + files
+// ---------------------------------------------------------------------------
+
+export async function getTrashContents(_req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const [folders, files] = await Promise.all([
+      prisma.resourceFolder.findMany({
+        where: {
+          deletedAt: { not: null },
+          OR: [{ parentId: null }, { parent: { deletedAt: null } }],
+        },
+        include: {
+          _count: {
+            select: {
+              children: { where: { deletedAt: { not: null } } },
+              files: { where: { deletedAt: { not: null } } },
+            },
+          },
+          createdBy: { select: { name: true } },
+        },
+        orderBy: { deletedAt: 'desc' },
+      }),
+      prisma.resourceFile.findMany({
+        where: {
+          deletedAt: { not: null },
+          OR: [{ folderId: null }, { folder: { deletedAt: null } }],
+        },
+        include: { uploadedBy: { select: { name: true } } },
+        orderBy: { deletedAt: 'desc' },
+      }),
+    ]);
+
+    const filesWithUrl = files.map((f) => ({ ...f, url: getPublicUrl(f.fileName) }));
+
+    sendSuccess(res, { folders, files: filesWithUrl }, 'Trash contents retrieved');
+  } catch (error) {
+    console.error('getTrashContents error:', error);
+    sendError(res, 'Something went wrong.', 500);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/resources/trash/restore — restore folders + files from trash
+// ---------------------------------------------------------------------------
+
+export async function restoreResources(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const fileIds = req.body.fileIds as string[] | undefined;
+    const folderIds = req.body.folderIds as string[] | undefined;
+
+    if ((!fileIds || fileIds.length === 0) && (!folderIds || folderIds.length === 0)) {
+      sendError(res, 'No items selected.');
+      return;
+    }
+
+    let restoredFiles = 0;
+    let restoredFolders = 0;
+
+    // Restore folders: for each folder, also restore descendants that were
+    // trashed at the exact same timestamp (trashed together).
+    if (folderIds && folderIds.length > 0) {
+      for (const folderId of folderIds) {
+        const folder = await prisma.resourceFolder.findUnique({
+          where: { id: folderId },
+        });
+        if (!folder || folder.deletedAt === null) continue;
+
+        // If parent is trashed, restoring this folder would leave it orphaned.
+        // Move it to root.
+        let newParentId = folder.parentId;
+        if (newParentId) {
+          const parent = await prisma.resourceFolder.findUnique({
+            where: { id: newParentId },
+            select: { deletedAt: true },
+          });
+          if (!parent || parent.deletedAt !== null) {
+            newParentId = null;
+          }
+        }
+
+        const descendantIds = await collectDescendantFolderIds(folderId, true);
+        const trashedAt = folder.deletedAt;
+
+        await prisma.$transaction([
+          prisma.resourceFolder.update({
+            where: { id: folderId },
+            data: { deletedAt: null, parentId: newParentId },
+          }),
+          prisma.resourceFolder.updateMany({
+            where: { id: { in: descendantIds }, deletedAt: trashedAt },
+            data: { deletedAt: null },
+          }),
+          prisma.resourceFile.updateMany({
+            where: {
+              folderId: { in: [folderId, ...descendantIds] },
+              deletedAt: trashedAt,
+            },
+            data: { deletedAt: null },
+          }),
+        ]);
+        restoredFolders++;
+      }
+    }
+
+    // Restore files directly. If parent folder is still trashed or gone, lift
+    // the file to root so it's accessible.
+    if (fileIds && fileIds.length > 0) {
+      for (const fileId of fileIds) {
+        const file = await prisma.resourceFile.findUnique({ where: { id: fileId } });
+        if (!file || file.deletedAt === null) continue;
+
+        let newFolderId = file.folderId;
+        if (newFolderId) {
+          const folder = await prisma.resourceFolder.findUnique({
+            where: { id: newFolderId },
+            select: { deletedAt: true },
+          });
+          if (!folder || folder.deletedAt !== null) {
+            newFolderId = null;
+          }
+        }
+
+        await prisma.resourceFile.update({
+          where: { id: fileId },
+          data: { deletedAt: null, folderId: newFolderId },
+        });
+        restoredFiles++;
+      }
+    }
+
+    sendSuccess(
+      res,
+      { restoredFiles, restoredFolders },
+      `Restored ${restoredFiles + restoredFolders} item(s)`,
+    );
+  } catch (error) {
+    console.error('restoreResources error:', error);
+    sendError(res, 'Something went wrong.', 500);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/resources/trash/purge — permanently delete items from trash
+// ---------------------------------------------------------------------------
+
+export async function permanentDeleteResources(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const fileIds = req.body.fileIds as string[] | undefined;
+    const folderIds = req.body.folderIds as string[] | undefined;
+
+    if ((!fileIds || fileIds.length === 0) && (!folderIds || folderIds.length === 0)) {
+      sendError(res, 'No items selected.');
+      return;
+    }
+
+    let deletedFiles = 0;
+    let deletedFolders = 0;
+
+    if (fileIds && fileIds.length > 0) {
+      const files = await prisma.resourceFile.findMany({
+        where: { id: { in: fileIds }, deletedAt: { not: null } },
+        select: { id: true, fileName: true },
+      });
+
+      await deleteR2Keys(files.map((f) => f.fileName));
+
+      const result = await prisma.resourceFile.deleteMany({
+        where: { id: { in: files.map((f) => f.id) } },
+      });
+      deletedFiles = result.count;
+    }
+
+    if (folderIds && folderIds.length > 0) {
+      const validFolders = await prisma.resourceFolder.findMany({
+        where: { id: { in: folderIds }, deletedAt: { not: null } },
+        select: { id: true },
+      });
+
+      for (const { id: folderId } of validFolders) {
+        const descendantIds = await collectDescendantFolderIds(folderId, true);
+        const allFolderIds = [folderId, ...descendantIds];
+
+        const r2Files = await prisma.resourceFile.findMany({
+          where: { folderId: { in: allFolderIds } },
+          select: { fileName: true },
+        });
+
+        await deleteR2Keys(r2Files.map((f) => f.fileName));
+
+        // FK cascade handles descendant folder + file rows
+        await prisma.resourceFolder.delete({ where: { id: folderId } });
+        deletedFolders++;
+      }
+    }
+
+    sendSuccess(
+      res,
+      { deletedFiles, deletedFolders },
+      `Permanently deleted ${deletedFiles + deletedFolders} item(s)`,
+    );
+  } catch (error) {
+    console.error('permanentDeleteResources error:', error);
+    sendError(res, 'Something went wrong.', 500);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/resources/trash/empty — permanently delete everything in trash
+// ---------------------------------------------------------------------------
+
+export async function emptyTrash(_req: AuthRequest, res: Response): Promise<void> {
+  try {
+    // Every file whose row will be purged — either directly trashed, or living
+    // under any trashed folder (which cascade-deletes it).
+    const [trashedFiles, trashedFolders] = await Promise.all([
+      prisma.resourceFile.findMany({
+        where: { deletedAt: { not: null } },
+        select: { fileName: true },
+      }),
+      prisma.resourceFolder.findMany({
+        where: { deletedAt: { not: null } },
+        select: { id: true },
+      }),
+    ]);
+
+    const trashedFolderIds = trashedFolders.map((f) => f.id);
+    const nestedLiveFiles = trashedFolderIds.length
+      ? await prisma.resourceFile.findMany({
+          where: { folderId: { in: trashedFolderIds }, deletedAt: null },
+          select: { fileName: true },
+        })
+      : [];
+
+    await deleteR2Keys([...trashedFiles, ...nestedLiveFiles].map((f) => f.fileName));
+
+    // Cascade purges everything once trashed folders are gone; the file
+    // deleteMany mops up direct-trashed files that weren't under a folder.
+    await prisma.$transaction([
+      prisma.resourceFolder.deleteMany({ where: { deletedAt: { not: null } } }),
+      prisma.resourceFile.deleteMany({ where: { deletedAt: { not: null } } }),
+    ]);
+
+    sendSuccess(res, null, 'Recycle bin emptied');
+  } catch (error) {
+    console.error('emptyTrash error:', error);
     sendError(res, 'Something went wrong.', 500);
   }
 }

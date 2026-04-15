@@ -170,3 +170,76 @@ export function useDeleteResourceFile() {
     },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Recycle Bin
+// ---------------------------------------------------------------------------
+
+export interface TrashedFolder extends ResourceFolder {
+  deletedAt: string;
+}
+
+export interface TrashedFile extends ResourceFile {
+  deletedAt: string;
+}
+
+interface TrashContents {
+  folders: TrashedFolder[];
+  files: TrashedFile[];
+}
+
+export function useGetTrashContents(enabled = true) {
+  return useQuery({
+    queryKey: ['resources', 'trash'],
+    queryFn: async () => {
+      const res = await api.get<ApiResponse<TrashContents>>('/resources/trash');
+      return res.data.data;
+    },
+    enabled,
+  });
+}
+
+export function useRestoreResources() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { fileIds?: string[]; folderIds?: string[] }) => {
+      const res = await api.post<ApiResponse<{ restoredFiles: number; restoredFolders: number }>>(
+        '/resources/trash/restore',
+        payload,
+      );
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['resources'] });
+    },
+  });
+}
+
+export function usePermanentDeleteResources() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { fileIds?: string[]; folderIds?: string[] }) => {
+      const res = await api.post<ApiResponse<{ deletedFiles: number; deletedFolders: number }>>(
+        '/resources/trash/purge',
+        payload,
+      );
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['resources'] });
+    },
+  });
+}
+
+export function useEmptyTrash() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await api.post<ApiResponse<null>>('/resources/trash/empty');
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['resources'] });
+    },
+  });
+}
