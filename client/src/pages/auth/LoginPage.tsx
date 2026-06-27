@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
+import { roleFallback } from '@/components/auth/ProtectedRoute';
 import api from '@/lib/axios';
 import { toastError } from '@/lib/toast';
 import type { ApiResponse, User } from '@/types';
@@ -31,7 +32,12 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isAuthenticated, isLoading, user } = useAuth();
+
+  // Already logged in → go to their home page immediately
+  if (!isLoading && isAuthenticated) {
+    return <Navigate to={roleFallback(user?.role)} replace />;
+  }
 
   const {
     register,
@@ -49,7 +55,7 @@ export default function LoginPage() {
       const res = await api.post<ApiResponse<LoginResponse>>('/auth/login', data);
       const { token, user } = res.data.data;
       login(token, user);
-      navigate('/dashboard');
+      navigate(roleFallback(user.role));
     } catch (err) {
       if (err instanceof AxiosError && err.response?.data?.message) {
         const msg = err.response.data.message;

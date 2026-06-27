@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
@@ -7,11 +7,19 @@ import {
   BarChart3,
   Clock,
   FolderDownIcon,
+  FileCheckIcon,
   LogOut,
   ChevronRightIcon,
+  ChevronLeftIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   SearchIcon,
   XIcon,
   BuildingIcon,
+  ClipboardListIcon,
+  ShieldCheckIcon,
+  ClockIcon,
+  InboxIcon,
 } from 'lucide-react';
 import { SidebarItemSkeleton } from '@/components/shared/LoadingSkeleton';
 import AddDepartmentModal from '@/components/modals/AddDepartmentModal';
@@ -24,6 +32,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { useGetDepartments } from '@/hooks/useDepartments';
+import { useGetPendingCount, useDepartmentStatus } from '@/hooks/useSubmissions';
 import { getInitials } from '@/utils/formatters';
 import { cn } from '@/lib/utils';
 
@@ -60,9 +69,39 @@ export default function Sidebar() {
   const { user, logout } = useAuth();
   const { data: departments, isLoading } = useGetDepartments();
   const navigate = useNavigate();
+  const location = useLocation();
   const [addDeptOpen, setAddDeptOpen] = useState(false);
   const [allDeptsOpen, setAllDeptsOpen] = useState(false);
   const [deptSearch, setDeptSearch] = useState('');
+  // Submissions-workspace department filter (compact / searchable)
+  const [submDeptSearch, setSubmDeptSearch] = useState('');
+  const [submShowAll, setSubmShowAll] = useState(false);
+
+  const isEncoder = user?.role === 'ENCODER';
+  // Admin "Form Submissions" is a focused workspace — when inside it, the
+  // sidebar hides the dashboard tools and shows submissions + department filter.
+  const inSubmissions = !isEncoder && location.pathname.startsWith('/submissions');
+
+  const { data: pendingData } = useGetPendingCount();
+  const pendingCount = pendingData?.count ?? 0;
+
+  // Department filter for the submissions workspace lives here in the sidebar.
+  const [searchParams] = useSearchParams();
+  const activeDeptId = inSubmissions ? searchParams.get('dept') : null;
+  const { data: deptStatus } = useDepartmentStatus(undefined, { enabled: inSubmissions });
+  const deptStatusMap = new Map((deptStatus?.departments ?? []).map((d) => [d.id, d.status]));
+
+  const SUBM_DEPT_LIMIT = 6;
+  const activeDepts = (departments ?? []).filter((d) => d.isActive);
+  const submFilteredDepts = submDeptSearch
+    ? activeDepts.filter((d) => {
+        const q = submDeptSearch.toLowerCase();
+        return d.name.toLowerCase().includes(q) || d.code.toLowerCase().includes(q);
+      })
+    : activeDepts;
+  const submShownDepts = (submDeptSearch || submShowAll)
+    ? submFilteredDepts
+    : submFilteredDepts.slice(0, SUBM_DEPT_LIMIT);
 
   const visibleDepts = departments?.slice(0, VISIBLE_DEPT_COUNT) ?? [];
   const hasMore = (departments?.length ?? 0) > VISIBLE_DEPT_COUNT;
@@ -93,108 +132,284 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        {/* Overview */}
-        <p className="mb-1.5 px-2.5 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
-          Overview
-        </p>
-        <div className="space-y-0.5">
-          <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" />
-          <NavItem to="/records" icon={Users} label="All Beneficiaries" />
-        </div>
 
-        {/* Departments */}
-        <p className="mb-1.5 mt-5 px-2.5 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
-          Departments
-        </p>
-        <div className="space-y-0.5">
-          {isLoading && (
-            <>
-              <SidebarItemSkeleton />
-              <SidebarItemSkeleton />
-              <SidebarItemSkeleton />
-            </>
-          )}
-
-          {!isLoading && (!departments || departments.length === 0) && (
-            <div className="px-2.5 py-3">
-              <p className="text-[12px] text-[#A1A1AA]">No departments yet</p>
+        {/* ── ENCODER: show only Templates ─────────────────────────── */}
+        {isEncoder && (
+          <>
+            <p className="mb-1.5 px-2.5 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
+              Tools
+            </p>
+            <div className="space-y-0.5">
+              <NavItem to="/templates" icon={ClipboardListIcon} label="GAD Templates" />
+              <NavItem to="/hgdg" icon={FileCheckIcon} label="HGDG Checklists" />
+              <div className="relative">
+                <NavLink
+                  to="/my-submissions"
+                  className={({ isActive }) =>
+                    cn(
+                      'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors',
+                      isActive
+                        ? 'border-l-2 border-[#18181B] bg-[#F4F4F5] font-medium text-[#09090B]'
+                        : 'text-[#71717A] hover:bg-[#F9F9F9]'
+                    )
+                  }
+                >
+                  <ClockIcon className="size-4 shrink-0" />
+                  <span className="flex-1 truncate">My Submissions</span>
+                  {pendingCount > 0 && (
+                    <span className="flex size-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">
+                      {pendingCount > 9 ? '9+' : pendingCount}
+                    </span>
+                  )}
+                </NavLink>
+              </div>
             </div>
-          )}
+          </>
+        )}
 
-          {/* Show first 5 departments */}
-          {!isLoading &&
-            visibleDepts.map((dept) => (
-              <NavLink
-                key={dept.id}
-                to={`/departments/${dept.code}`}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors',
-                    isActive
-                      ? 'border-l-2 border-[#18181B] bg-[#F4F4F5] font-medium text-[#09090B]'
-                      : 'text-[#71717A] hover:bg-[#F9F9F9]'
-                  )
-                }
+        {/* ── ADMIN: Form Submissions workspace (focused) ───────────── */}
+        {inSubmissions && (
+          <>
+            <button
+              onClick={() => navigate('/home')}
+              className="mb-3 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-[#71717A] transition-colors hover:bg-[#F9F9F9] hover:text-[#09090B]"
+            >
+              <ChevronLeftIcon className="size-4 shrink-0" />
+              <span className="flex-1 text-left">Back to Menu</span>
+            </button>
+
+            <p className="mb-1.5 px-2.5 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
+              Form Submissions
+            </p>
+            <div className="space-y-0.5">
+              <button
+                onClick={() => navigate('/submissions')}
+                className={cn(
+                  'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors',
+                  !activeDeptId
+                    ? 'border-l-2 border-[#18181B] bg-[#F4F4F5] font-medium text-[#09090B]'
+                    : 'text-[#71717A] hover:bg-[#F9F9F9]'
+                )}
               >
-                <span
-                  className="size-2 shrink-0 rounded-sm"
-                  style={{ backgroundColor: dept.color }}
-                />
-                <span className="flex-1 truncate">{dept.name}</span>
-              </NavLink>
-            ))}
+                <InboxIcon className="size-4 shrink-0" />
+                <span className="flex-1 truncate text-left">All Submissions</span>
+                {pendingCount > 0 && (
+                  <span className="flex size-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">
+                    {pendingCount > 9 ? '9+' : pendingCount}
+                  </span>
+                )}
+              </button>
+            </div>
 
-          {/* Show All Departments button */}
-          {!isLoading && hasMore && (
+            {/* Department filter */}
+            <p className="mb-1.5 mt-5 px-2.5 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
+              Department
+            </p>
+
+            {/* Search */}
+            <div className="relative mb-1.5 px-0.5">
+              <SearchIcon className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-[#A1A1AA]" />
+              <input
+                value={submDeptSearch}
+                onChange={(e) => setSubmDeptSearch(e.target.value)}
+                placeholder="Search department…"
+                className="w-full rounded-md border border-[#EBEBEB] bg-white py-1.5 pl-7 pr-6 text-[12px] text-[#09090B] outline-none placeholder:text-[#A1A1AA] focus:border-[#A1A1AA]"
+              />
+              {submDeptSearch && (
+                <button
+                  onClick={() => setSubmDeptSearch('')}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-[#09090B]"
+                >
+                  <XIcon className="size-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-0.5">
+              {isLoading && (
+                <>
+                  <SidebarItemSkeleton />
+                  <SidebarItemSkeleton />
+                  <SidebarItemSkeleton />
+                </>
+              )}
+              {!isLoading && submShownDepts.map((d) => {
+                const st = deptStatusMap.get(d.id);
+                const active = activeDeptId === d.id;
+                return (
+                  <button
+                    key={d.id}
+                    onClick={() => navigate(`/submissions?dept=${d.id}`)}
+                    className={cn(
+                      'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors',
+                      active
+                        ? 'border-l-2 border-[#18181B] bg-[#F4F4F5] font-medium text-[#09090B]'
+                        : 'text-[#71717A] hover:bg-[#F9F9F9]'
+                    )}
+                    title={st === 'encoding' ? 'Still encoding (no submission yet)' : 'Has submitted'}
+                  >
+                    <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: d.color }} />
+                    <span className="flex-1 truncate text-left">{d.name}</span>
+                    {st === 'encoding' && (
+                      <span className="ml-auto inline-block size-1.5 shrink-0 rounded-full bg-orange-400" title="Still encoding" />
+                    )}
+                  </button>
+                );
+              })}
+
+              {!isLoading && submDeptSearch && submShownDepts.length === 0 && (
+                <p className="px-2.5 py-2 text-[12px] text-[#A1A1AA]">No department found</p>
+              )}
+
+              {!isLoading && !submDeptSearch && activeDepts.length > SUBM_DEPT_LIMIT && (
+                <button
+                  onClick={() => setSubmShowAll((v) => !v)}
+                  className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px] text-[#71717A] transition-colors hover:bg-[#F9F9F9] hover:text-[#09090B]"
+                >
+                  {submShowAll ? (
+                    <>
+                      <ChevronUpIcon className="size-3.5" /> Show less
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDownIcon className="size-3.5" /> Show all ({activeDepts.length})
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ── ADMIN: full (dashboard) navigation ────────────────────── */}
+        {!isEncoder && !inSubmissions && (
+          <>
             <button
-              onClick={() => { setAllDeptsOpen(true); setDeptSearch(''); }}
-              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] text-[#A1A1AA] transition-colors hover:bg-[#F9F9F9] hover:text-[#09090B]"
+              onClick={() => navigate('/home')}
+              className="mb-3 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-[#71717A] transition-colors hover:bg-[#F9F9F9] hover:text-[#09090B]"
             >
-              <BuildingIcon className="size-4 shrink-0" />
-              <span className="flex-1 text-left">All departments</span>
-              <span className="rounded-full bg-[#F4F4F5] px-1.5 py-0.5 text-[11px]">
-                {departments?.length}
-              </span>
-              <ChevronRightIcon className="size-3.5" />
+              <ChevronLeftIcon className="size-4 shrink-0" />
+              <span className="flex-1 text-left">Back to Menu</span>
             </button>
-          )}
 
-          {/* Add Department */}
-          {!isLoading && (
-            <button
-              onClick={() => setAddDeptOpen(true)}
-              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] text-[#A1A1AA] transition-colors hover:bg-[#F9F9F9] hover:text-[#09090B]"
-            >
-              <Plus className="size-4 shrink-0" />
-              <span>Add Department</span>
-            </button>
-          )}
-        </div>
+            {/* Overview */}
+            <p className="mb-1.5 px-2.5 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
+              Overview
+            </p>
+            <div className="space-y-0.5">
+              <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" />
+              <NavItem to="/records" icon={Users} label="All Beneficiaries" />
+            </div>
 
-        {/* Tools */}
-        <p className="mb-1.5 mt-5 px-2.5 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
-          Tools
-        </p>
-        <div className="space-y-0.5">
-          <NavItem to="/reports" icon={BarChart3} label="Reports" />
-          <NavItem to="/upload-history" icon={Clock} label="Upload History" />
-          <NavItem to="/resources" icon={FolderDownIcon} label="GAD Resources" />
-        </div>
+            {/* Departments */}
+            <p className="mb-1.5 mt-5 px-2.5 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
+              Departments
+            </p>
+            <div className="space-y-0.5">
+              {isLoading && (
+                <>
+                  <SidebarItemSkeleton />
+                  <SidebarItemSkeleton />
+                  <SidebarItemSkeleton />
+                </>
+              )}
+
+              {!isLoading && (!departments || departments.length === 0) && (
+                <div className="px-2.5 py-3">
+                  <p className="text-[12px] text-[#A1A1AA]">No departments yet</p>
+                </div>
+              )}
+
+              {!isLoading &&
+                visibleDepts.map((dept) => (
+                  <NavLink
+                    key={dept.id}
+                    to={`/departments/${dept.code}`}
+                    className={({ isActive }) =>
+                      cn(
+                        'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors',
+                        isActive
+                          ? 'border-l-2 border-[#18181B] bg-[#F4F4F5] font-medium text-[#09090B]'
+                          : 'text-[#71717A] hover:bg-[#F9F9F9]'
+                      )
+                    }
+                  >
+                    <span
+                      className="size-2 shrink-0 rounded-sm"
+                      style={{ backgroundColor: dept.color }}
+                    />
+                    <span className="flex-1 truncate">{dept.name}</span>
+                  </NavLink>
+                ))}
+
+              {!isLoading && hasMore && (
+                <button
+                  onClick={() => { setAllDeptsOpen(true); setDeptSearch(''); }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] text-[#A1A1AA] transition-colors hover:bg-[#F9F9F9] hover:text-[#09090B]"
+                >
+                  <BuildingIcon className="size-4 shrink-0" />
+                  <span className="flex-1 text-left">All departments</span>
+                  <span className="rounded-full bg-[#F4F4F5] px-1.5 py-0.5 text-[11px]">
+                    {departments?.length}
+                  </span>
+                  <ChevronRightIcon className="size-3.5" />
+                </button>
+              )}
+
+              {!isLoading && (
+                <button
+                  onClick={() => setAddDeptOpen(true)}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] text-[#A1A1AA] transition-colors hover:bg-[#F9F9F9] hover:text-[#09090B]"
+                >
+                  <Plus className="size-4 shrink-0" />
+                  <span>Add Department</span>
+                </button>
+              )}
+            </div>
+
+            {/* Tools */}
+            <p className="mb-1.5 mt-5 px-2.5 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
+              Tools
+            </p>
+            <div className="space-y-0.5">
+              <NavItem to="/reports"         icon={BarChart3}       label="Reports" />
+              <NavItem to="/upload-history"  icon={Clock}           label="Upload History" />
+              <NavItem to="/resources"       icon={FolderDownIcon}  label="GAD Resources" />
+              <NavItem to="/hgdg"            icon={FileCheckIcon}   label="HGDG Checklists" />
+            </div>
+
+            {/* Admin */}
+            {user?.role === 'ADMIN' && (
+              <>
+                <p className="mb-1.5 mt-5 px-2.5 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
+                  Admin
+                </p>
+                <div className="space-y-0.5">
+                  <NavItem to="/admin/users" icon={ShieldCheckIcon} label="User Management" />
+                </div>
+              </>
+            )}
+          </>
+        )}
+
       </nav>
 
       {/* Footer */}
       <div className="flex items-center gap-2.5 border-t border-[#F0F0F0] px-4 py-3">
-        <div className="flex size-[30px] items-center justify-center rounded-full bg-[#F4F4F5]">
-          <span className="text-[11px] font-medium text-[#71717A]">
-            {user ? getInitials(user.name) : '??'}
-          </span>
+        <div
+          className="flex size-[30px] shrink-0 items-center justify-center rounded-full text-[11px] font-medium text-white"
+          style={{ backgroundColor: user?.department?.color ?? '#71717A' }}
+        >
+          {user ? getInitials(user.name) : '??'}
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-medium text-[#09090B]">
             {user?.name ?? 'User'}
           </p>
           <p className="truncate text-[11px] text-[#A1A1AA]">
-            {user?.role ?? 'Unknown'}
+            {isEncoder && user?.department
+              ? user.department.name
+              : user?.role === 'ADMIN' ? 'Administrator' : 'Encoder'}
           </p>
         </div>
         <button

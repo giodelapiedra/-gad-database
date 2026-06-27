@@ -17,6 +17,12 @@ export enum UploadStatus {
   FAILED = 'FAILED',
 }
 
+export enum SubmissionStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+  RETURNED = 'RETURNED',
+}
+
 export interface JwtPayload {
   id: string;
   email: string;

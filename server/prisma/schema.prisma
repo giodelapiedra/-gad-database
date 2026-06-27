@@ -24,22 +24,36 @@ enum UploadStatus {
   FAILED
 }
 
-model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  password  String
-  role      Role     @default(ENCODER)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+enum SubmissionStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  RETURNED
+}
 
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  password     String
+  role         Role     @default(ENCODER)
+  isActive     Boolean  @default(true)
+  departmentId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  department       Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  notifications    Notification[]
   records          Record[]
   uploadLogs       UploadLog[]
   files            File[]
   resourceFolders  ResourceFolder[] @relation("resourceFolders")
   resourceFiles    ResourceFile[]   @relation("resourceFiles")
+  submittedForms   FormSubmission[] @relation("SubmittedByUser")
+  reviewedForms    FormSubmission[] @relation("ReviewedByUser")
+  submissionComments SubmissionComment[] @relation("SubmissionCommentAuthor")
 
+  @@index([departmentId])
   @@map("users")
 }
 
@@ -53,6 +67,7 @@ model Department {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  users      User[]
   records    Record[]
   uploadLogs UploadLog[]
   files      File[]
@@ -174,4 +189,75 @@ model DownloadLog {
   @@index([createdAt])
   @@index([fileId])
   @@map("download_logs")
+}
+
+model Notification {
+  id           String   @id @default(cuid())
+  userId       String
+  type         String
+  title        String
+  message      String
+  isRead       Boolean  @default(false)
+  submissionId String?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model FormSubmission {
+  id          String           @id @default(cuid())
+  templateId  String
+  title       String
+  formData    Json             @default("{}")
+  status      SubmissionStatus @default(PENDING)
+  submittedBy String
+  submittedAt DateTime         @default(now())
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  remarks     String?
+  updatedAt   DateTime         @updatedAt
+
+  submitter User  @relation("SubmittedByUser", fields: [submittedBy], references: [id], onDelete: Cascade)
+  reviewer  User? @relation("ReviewedByUser", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  comments  SubmissionComment[]
+
+  @@index([status])
+  @@index([submittedBy])
+  @@index([templateId])
+  @@index([submittedAt])
+  @@index([status, submittedAt])
+  @@map("form_submissions")
+}
+
+model SubmissionComment {
+  id             String   @id @default(cuid())
+  submissionId   String
+  authorId       String
+  body           String
+  attachmentUrl  String?
+  attachmentName String?
+  createdAt      DateTime @default(now())
+
+  submission FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  author     User           @relation("SubmissionCommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@map("submission_comments")
+}
+
+model HGDGTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  sector      String   @unique
+  pullout     String?
+  r2Key       String
+  fieldMap    Json     @default("[]")
+  isPublished Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("hgdg_templates")
 }

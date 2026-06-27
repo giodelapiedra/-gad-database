@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import type { User, ApiResponse } from '@/types';
 import api from '@/lib/axios';
 import { toastInfo } from '@/lib/toast';
+import { getCookie, setCookie, removeCookie } from '@/lib/cookies';
 
 interface AuthContextValue {
   user: User | null;
@@ -21,8 +22,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const token = localStorage.getItem('gad_token');
-    const savedUser = localStorage.getItem('gad_user');
+    const token = getCookie('gad_token');
+    const savedUser = getCookie('gad_user');
 
     if (token && savedUser) {
       try {
@@ -32,17 +33,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         api.get<ApiResponse<User>>('/auth/me')
           .then((res) => {
             setUser(res.data.data);
-            localStorage.setItem('gad_user', JSON.stringify(res.data.data));
+            setCookie('gad_user', JSON.stringify(res.data.data));
           })
           .catch(() => {
-            localStorage.removeItem('gad_token');
-            localStorage.removeItem('gad_user');
+            removeCookie('gad_token');
+            removeCookie('gad_user');
             setUser(null);
           })
           .finally(() => setIsLoading(false));
       } catch {
-        localStorage.removeItem('gad_token');
-        localStorage.removeItem('gad_user');
+        removeCookie('gad_token');
+        removeCookie('gad_user');
         setIsLoading(false);
       }
     } else {
@@ -51,14 +52,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback((token: string, userData: User) => {
-    localStorage.setItem('gad_token', token);
-    localStorage.setItem('gad_user', JSON.stringify(userData));
+    setCookie('gad_token', token);
+    setCookie('gad_user', JSON.stringify(userData));
     setUser(userData);
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem('gad_token');
-    localStorage.removeItem('gad_user');
+    removeCookie('gad_token');
+    removeCookie('gad_user');
     setUser(null);
     toastInfo('Signed out successfully');
     navigate('/login');

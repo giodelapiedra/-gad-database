@@ -8,6 +8,7 @@ export interface User {
   role: Role;
   isActive: boolean;
   createdAt: string;
+  department: { id: string; name: string; code: string; color: string } | null;
 }
 
 export interface Department {

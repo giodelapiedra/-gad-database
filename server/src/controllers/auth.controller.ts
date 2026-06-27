@@ -23,7 +23,10 @@ export async function login(req: AuthRequest, res: Response): Promise<void> {
 
     const { email, password } = parsed.data;
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findUnique({
+      where: { email },
+      include: { department: { select: { id: true, name: true, code: true, color: true } } },
+    });
 
     if (!user || !user.isActive) {
       sendError(res, 'Invalid credentials.', 401);
@@ -51,6 +54,7 @@ export async function login(req: AuthRequest, res: Response): Promise<void> {
         name: user.name,
         email: user.email,
         role: user.role,
+        department: user.department ?? null,
       },
     }, 'Login successful');
   } catch (error) {
@@ -76,6 +80,7 @@ export async function me(req: AuthRequest, res: Response): Promise<void> {
         isActive: true,
         createdAt: true,
         updatedAt: true,
+        department: { select: { id: true, name: true, code: true, color: true } },
       },
     });
 

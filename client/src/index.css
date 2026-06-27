@@ -65,3 +65,39 @@
     @apply min-h-screen;
   }
 }
+
+/* ── Print-to-PDF for submission forms ──────────────────────────────────
+   When body has .printing-submission, only the .print-root content prints
+   (sidebar, topbar, action buttons and comments are hidden). Wide DILG
+   tables are scaled to fit a landscape page. */
+@media print {
+  body.printing-submission {
+    background: #fff;
+  }
+  body.printing-submission * {
+    visibility: hidden;
+  }
+  body.printing-submission .print-root,
+  body.printing-submission .print-root * {
+    visibility: visible;
+  }
+  body.printing-submission .print-root {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 0;
+    zoom: 0.62;
+  }
+  body.printing-submission .no-print {
+    display: none !important;
+  }
+  /* let wide tables render in full instead of clipping in a scroll box */
+  body.printing-submission .print-root .overflow-x-auto {
+    overflow: visible !important;
+  }
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+}
