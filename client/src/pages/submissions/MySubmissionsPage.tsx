@@ -335,6 +335,16 @@ export default function MySubmissionsPage() {
                       </Button>
                     </>
                   )}
+                  {s.status === 'PENDING' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => navigate(`/my-submissions/${s.id}/edit`)}
+                    >
+                      <PencilIcon className="mr-1.5 size-3.5" />
+                      Edit
+                    </Button>
+                  )}
                   {s.status === 'RETURNED' && (
                     <Button
                       size="sm"
@@ -382,6 +392,7 @@ export default function MySubmissionsPage() {
                   {s.status === 'PENDING' && (
                     <p className="mt-5 text-[12px] text-[#71717A]">
                       Your submission is waiting for the admin to review. You'll be notified once there's a decision.
+                      Spotted a mistake? Click <strong>Edit</strong> — you can still correct it until it's reviewed, no need to submit a new one.
                     </p>
                   )}
                 </div>

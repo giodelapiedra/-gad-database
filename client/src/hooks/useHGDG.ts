@@ -3,13 +3,13 @@ import api from '@/lib/axios';
 
 export type FieldDef = {
   id: string;
+  label: string;
   page: number;
-  x: number;  // % of page width
-  y: number;  // % of page height
+  x: number;
+  y: number;
   w: number;
   h: number;
   type: 'text' | 'number' | 'radio' | 'checkbox' | 'textarea';
-  label: string;
   options?: string[];
   fontSize?: number;
 };
@@ -47,14 +47,13 @@ export function useHGDGTemplate(id: string | undefined) {
 }
 
 export function useHGDGPdfUrl(id: string | undefined) {
-  // PDF is served directly from server — build URL with auth token in header via axios blob fetch
   return useQuery<string>({
     queryKey: ['hgdg-pdf', id],
     enabled: !!id,
     staleTime: Infinity,
     queryFn: async () => {
-      const res = await api.get(`/hgdg/${id}/pdf`, { responseType: 'blob' });
-      return URL.createObjectURL(res.data);
+      const res = await api.get(`/hgdg/${id}/pdf/stream`, { responseType: 'blob' });
+      return URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
     },
   });
 }
@@ -85,6 +84,7 @@ export function useUpdateFieldMap() {
     },
   });
 }
+
 
 export function useSetHGDGPublished() {
   const qc = useQueryClient();

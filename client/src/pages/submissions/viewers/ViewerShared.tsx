@@ -1,4 +1,5 @@
 import type { AttributedRow } from '@/hooks/useTemplates';
+import { FlaggedRow } from '@/components/review/ReviewFlags';
 
 export function peso(n: number) {
   return n.toLocaleString('en-PH', { minimumFractionDigits: 2 });
@@ -48,7 +49,7 @@ export function SubLabel({ color, children }: { color: 'blue' | 'amber'; childre
 
 export function SubTotalRow({ label, app, act }: { label: string; app: number; act: number }) {
   return (
-    <div className="grid grid-cols-[1fr_150px_150px_196px] border-t border-[#D4D4D8] bg-[#F4F4F5]">
+    <div className="grid grid-cols-[1fr_150px_150px_260px] border-t border-[#D4D4D8] bg-[#F4F4F5]">
       <div className="border-r border-[#D4D4D8] px-4 py-2 text-[12px] font-bold text-[#09090B]">{label}</div>
       <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold tabular-nums">{peso(app)}</div>
       <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold tabular-nums">{peso(act)}</div>
@@ -62,38 +63,50 @@ export function AttrRows({ rows, showOffice }: { rows: AttributedRow[]; showOffi
   return (
     <div className="space-y-2 p-3">
       {rows.map((row, i) => (
-        <div key={i} className="rounded-md border border-[#EBEBEB] bg-[#FAFAFA] p-3">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div>
-              <p className="text-[10px] font-medium text-[#71717A]">Project/Program Title</p>
-              <p className="mt-0.5 whitespace-pre-wrap text-[12px] text-[#09090B]">{row.projectTitle || '—'}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-medium text-[#71717A]">HGDG Score</p>
-              <p className="mt-0.5 text-[12px] tabular-nums text-[#09090B]">{row.hgdgScore || '—'}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-medium text-[#71717A]">Total Annual Budget</p>
-              <p className="mt-0.5 text-[12px] tabular-nums text-[#09090B]">₱{peso(row.totalBudget)}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-medium text-[#71717A]">GAD Attributed Budget</p>
-              <p className="mt-0.5 text-[12px] tabular-nums text-[#09090B]">₱{peso(row.gadAttributedBudget)}</p>
-            </div>
-            {showOffice ? (
+        <FlaggedRow key={i} section="attributedPrograms" row={i + 1}>
+          <div className="rounded-md border border-[#EBEBEB] bg-[#FAFAFA] p-3">
+            <RowNumber n={i + 1} />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <div>
-                <p className="text-[10px] font-medium text-[#71717A]">Lead/Responsible Office</p>
-                <p className="mt-0.5 text-[12px] text-[#09090B]">{row.responsibleOffice || '—'}</p>
+                <p className="text-[10px] font-medium text-[#71717A]">Project/Program Title</p>
+                <p className="mt-0.5 whitespace-pre-wrap text-[12px] text-[#09090B]">{row.projectTitle || '—'}</p>
               </div>
-            ) : (
               <div>
-                <p className="text-[10px] font-medium text-[#71717A]">Variance / Remarks</p>
-                <p className="mt-0.5 text-[12px] text-[#09090B]">{row.varianceRemarks || '—'}</p>
+                <p className="text-[10px] font-medium text-[#71717A]">HGDG Score</p>
+                <p className="mt-0.5 text-[12px] tabular-nums text-[#09090B]">{row.hgdgScore || '—'}</p>
               </div>
-            )}
+              <div>
+                <p className="text-[10px] font-medium text-[#71717A]">Total Annual Budget</p>
+                <p className="mt-0.5 text-[12px] tabular-nums text-[#09090B]">₱{peso(row.totalBudget)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-medium text-[#71717A]">GAD Attributed Budget</p>
+                <p className="mt-0.5 text-[12px] tabular-nums text-[#09090B]">₱{peso(row.gadAttributedBudget)}</p>
+              </div>
+              {showOffice ? (
+                <div>
+                  <p className="text-[10px] font-medium text-[#71717A]">Lead/Responsible Office</p>
+                  <p className="mt-0.5 text-[12px] text-[#09090B]">{row.responsibleOffice || '—'}</p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-[10px] font-medium text-[#71717A]">Variance / Remarks</p>
+                  <p className="mt-0.5 text-[12px] text-[#09090B]">{row.varianceRemarks || '—'}</p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        </FlaggedRow>
       ))}
+    </div>
+  );
+}
+
+/** Row number badge, so a reviewer's "Row 2" matches what the encoder sees. */
+export function RowNumber({ n }: { n: number }) {
+  return (
+    <div className="mb-1 flex items-center gap-2">
+      <span className="flex size-5 items-center justify-center rounded-full bg-[#18181B] text-[10px] font-bold text-white">{n}</span>
     </div>
   );
 }

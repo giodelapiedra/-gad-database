@@ -14,6 +14,15 @@ export interface TemplateDef {
 
 // ─── Shared ───────────────────────────────────────────────────────────────
 
+/** A proof file attached to an AR row's "Variance or Remarks". */
+export interface EvidenceFile {
+  url: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  uploadedAt: string;
+}
+
 export interface AttributedRow {
   projectTitle: string;
   hgdgScore: number;
@@ -70,6 +79,10 @@ export interface BrgyARRow {
   approvedBudget: number;
   actualCost: number;
   variance: string;
+  /** Proof of the activity, uploaded against Variance or Remarks (7). */
+  evidence?: EvidenceFile[];
+  /** Set when the row was copied from a GPB: "<gpb section>:<row index>". */
+  gpbRef?: string;
 }
 
 export interface BrgyARFormData {
@@ -88,6 +101,8 @@ export interface BrgyARFormData {
   preparedBy: string;
   approvedBy: string;
   date: string;
+  /** The GPB submission the planned rows were copied from. */
+  sourceGpbId?: string;
 }
 
 export const blankBrgyARRow = (): BrgyARRow => ({
@@ -143,6 +158,10 @@ export interface CityARRow {
   actualCost: number;
   variance: string;
   responsibleOffice: string;
+  /** Proof of the activity, uploaded against Variance or Remarks (9). */
+  evidence?: EvidenceFile[];
+  /** Set when the row was copied from a GPB: "<gpb section>:<row index>". */
+  gpbRef?: string;
 }
 
 export interface CityARFormData {
@@ -160,6 +179,8 @@ export interface CityARFormData {
   preparedBy: string;
   approvedBy: string;
   date: string;
+  /** The GPB submission the planned rows were copied from. */
+  sourceGpbId?: string;
 }
 
 export const blankCityARRow = (): CityARRow => ({

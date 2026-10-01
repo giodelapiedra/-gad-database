@@ -20,6 +20,7 @@ import {
   ShieldCheckIcon,
   ClockIcon,
   InboxIcon,
+  CalendarDaysIcon,
 } from 'lucide-react';
 import { SidebarItemSkeleton } from '@/components/shared/LoadingSkeleton';
 import AddDepartmentModal from '@/components/modals/AddDepartmentModal';
@@ -375,6 +376,7 @@ export default function Sidebar() {
               <NavItem to="/reports"         icon={BarChart3}       label="Reports" />
               <NavItem to="/upload-history"  icon={Clock}           label="Upload History" />
               <NavItem to="/resources"       icon={FolderDownIcon}  label="GAD Resources" />
+              <NavItem to="/trainings"       icon={CalendarDaysIcon} label="Trainings & Seminars" />
               <NavItem to="/hgdg"            icon={FileCheckIcon}   label="HGDG Checklists" />
             </div>
 

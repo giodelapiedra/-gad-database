@@ -54,6 +54,7 @@ export async function login(req: AuthRequest, res: Response): Promise<void> {
         name: user.name,
         email: user.email,
         role: user.role,
+        barangay: user.barangay,
         department: user.department ?? null,
       },
     }, 'Login successful');
@@ -78,6 +79,7 @@ export async function me(req: AuthRequest, res: Response): Promise<void> {
         email: true,
         role: true,
         isActive: true,
+        barangay: true,
         createdAt: true,
         updatedAt: true,
         department: { select: { id: true, name: true, code: true, color: true } },

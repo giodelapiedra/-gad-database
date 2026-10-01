@@ -1,5 +1,6 @@
 import { Router, RequestHandler } from 'express';
 import { getDepartments, getFiles, getYears, getSummary, getResources, getResourceFolder, getResourceTree, viewPublicResourceFile, publicDownload } from '../controllers/public.controller';
+import { getPublicTrainings } from '../controllers/training.controller';
 
 const router = Router();
 
@@ -13,5 +14,6 @@ router.get('/resources/folder/:id', getResourceFolder as RequestHandler);
 router.get('/resources/view/:id', viewPublicResourceFile as RequestHandler);
 router.get('/resources/tree/:name', getResourceTree as RequestHandler);
 router.post('/download', publicDownload as RequestHandler);
+router.get('/trainings', getPublicTrainings as RequestHandler);
 
 export default router;

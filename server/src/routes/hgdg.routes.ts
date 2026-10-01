@@ -7,6 +7,7 @@ import {
   listTemplates,
   getTemplate,
   servePdf,
+  streamPdf,
   createTemplate,
   updateFieldMap,
   setPublished,
@@ -21,6 +22,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 router.get('/', authenticate, listTemplates);
 router.get('/:id', authenticate, getTemplate);
 router.get('/:id/pdf', authenticate, servePdf);
+router.get('/:id/pdf/stream', authenticate, streamPdf);
 router.post('/generate-filled', authenticate, generateFilledPdf);
 
 // Admin only

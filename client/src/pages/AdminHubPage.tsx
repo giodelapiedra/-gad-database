@@ -1,3 +1,4 @@
+import type React from 'react';
 import { Link } from 'react-router-dom';
 import {
   LayoutDashboardIcon,
@@ -25,7 +26,7 @@ const CARDS = [
     accent: 'bg-emerald-50 text-emerald-600',
     showPending: true,
   },
-] as const;
+] satisfies { to: string; title: string; description: string; icon: React.ComponentType<{ className?: string }>; accent: string; showPending?: boolean }[];
 
 export default function AdminHubPage() {
   const { user, logout } = useAuth();

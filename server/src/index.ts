@@ -18,6 +18,7 @@ import templateRoutes from './routes/template.routes';
 import submissionRoutes from './routes/submission.routes';
 import notificationRoutes from './routes/notification.routes';
 import hgdgRoutes from './routes/hgdg.routes';
+import trainingRoutes from './routes/training.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -51,6 +52,7 @@ app.use('/api/templates', templateRoutes);
 app.use('/api/submissions', submissionRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/hgdg', hgdgRoutes);
+app.use('/api/trainings', trainingRoutes);
 
 // Global error handler
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

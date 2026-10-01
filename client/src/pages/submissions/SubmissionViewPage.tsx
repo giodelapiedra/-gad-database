@@ -3,21 +3,17 @@ import {
   ArrowLeftIcon,
   DownloadIcon,
   FileSpreadsheetIcon,
-  MessageSquareIcon,
-  PaperclipIcon,
-  SendIcon,
   PencilIcon,
   PrinterIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { useGetSubmission, generateFromSubmission, useAddComment, type SubmissionComment } from '@/hooks/useSubmissions';
+import { useGetSubmission, generateFromSubmission, useResolveComment, type SubmissionComment } from '@/hooks/useSubmissions';
+import { ReviewFlagsProvider, CorrectionChecklist } from '@/components/review/ReviewFlags';
 import { useAuth } from '@/hooks/useAuth';
 import type {
   BrgyARFormData,
@@ -31,6 +27,8 @@ import { BrgyARView } from './viewers/BrgyARView';
 import { BrgyGPBView } from './viewers/BrgyGPBView';
 import { CityGPBView } from './viewers/CityGPBView';
 import { CityARView } from './viewers/CityARView';
+import { CommentsThread } from './CommentsThread';
+import { ReviewActions } from './ReviewActions';
 
 // ─── Template label map ───────────────────────────────────────────────────────
 
@@ -40,77 +38,6 @@ const TEMPLATE_LABELS: Record<string, string> = {
   CITY_GPB:     'City/Municipality Annual GAD Plan and Budget (Annex D)',
   CITY_AR:      'City/Municipality GAD Accomplishment Report (Annex E)',
 };
-
-// ─── Comments & Attachments thread ─────────────────────────────────────────
-
-function CommentsThread({ submissionId, comments }: { submissionId: string; comments: SubmissionComment[] }) {
-  const [body, setBody] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const addComment = useAddComment();
-
-  async function submit() {
-    if (!body.trim() && !file) { toast.error('Write a comment or attach a file.'); return; }
-    try {
-      await addComment.mutateAsync({ id: submissionId, body: body.trim(), file });
-      setBody(''); setFile(null);
-      toast.success('Comment added.');
-    } catch {
-      toast.error('Failed to add comment.');
-    }
-  }
-
-  return (
-    <div className="mb-5 rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-      <div className="mb-4 flex items-center gap-2">
-        <MessageSquareIcon className="size-4 text-[#71717A]" />
-        <h3 className="text-[13px] font-semibold text-[#09090B]">Comments &amp; Attachments</h3>
-        <span className="rounded-full bg-[#F4F4F5] px-1.5 py-0.5 text-[11px] text-[#71717A]">{comments.length}</span>
-      </div>
-
-      {comments.length === 0 ? (
-        <p className="mb-4 text-[12px] text-[#A1A1AA]">No comments yet.</p>
-      ) : (
-        <div className="mb-4 space-y-3">
-          {comments.map((c) => (
-            <div key={c.id} className="rounded-md border border-[#EBEBEB] bg-[#FAFAFA] p-3">
-              <div className="mb-1 flex items-center gap-2 text-[12px]">
-                <span className="font-semibold text-[#09090B]">{c.author.name}</span>
-                <Badge variant="outline" className="text-[10px]">{c.author.role === 'ADMIN' ? 'Admin' : 'Encoder'}</Badge>
-                <span className="text-[#A1A1AA]">{fmt(c.createdAt)}</span>
-              </div>
-              {c.body && <p className="whitespace-pre-wrap text-[13px] text-[#3F3F46]">{c.body}</p>}
-              {c.attachmentUrl && (
-                <a href={c.attachmentUrl} target="_blank" rel="noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-[#E4E4E7] bg-white px-2.5 py-1.5 text-[12px] text-[#18181B] hover:bg-[#F4F4F5]">
-                  <PaperclipIcon className="size-3.5" />
-                  {c.attachmentName ?? 'Attachment'}
-                  <DownloadIcon className="size-3.5 text-[#71717A]" />
-                </a>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Add comment */}
-      <div className="space-y-2 border-t border-[#EBEBEB] pt-3">
-        <Textarea rows={2} value={body} onChange={(e) => setBody(e.target.value)}
-          placeholder="Leave a comment…" className="resize-none text-[13px]" />
-        <div className="flex items-center justify-between gap-2">
-          <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-[#71717A] hover:text-[#18181B]">
-            <PaperclipIcon className="size-3.5" />
-            <span className="max-w-[200px] truncate">{file ? file.name : 'Attach file'}</span>
-            <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          </label>
-          <Button size="sm" disabled={addComment.isPending} onClick={submit}>
-            <SendIcon className="mr-1.5 size-3.5" />
-            {addComment.isPending ? 'Posting…' : 'Post'}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -122,6 +49,18 @@ export default function SubmissionViewPage() {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const { data: sub, isLoading, isError } = useGetSubmission(id ?? null);
+  const isAdmin = user?.role === 'ADMIN';
+  const resolveComment = useResolveComment();
+
+  // Reviewers resolve a flag straight from the red note on the form.
+  const resolveFlag = useCallback(async (c: SubmissionComment) => {
+    try {
+      await resolveComment.mutateAsync({ id: id!, commentId: c.id, resolved: true });
+      toast.success('Marked as resolved.');
+    } catch {
+      toast.error('Failed to update the flag.');
+    }
+  }, [resolveComment, id]);
 
   async function handleDownload() {
     if (!sub) return;
@@ -199,10 +138,19 @@ export default function SubmissionViewPage() {
 
         <StatusBadge status={sub.status} />
 
-        {(user?.role === 'ADMIN' || sub.status === 'APPROVED') && (
+        {isAdmin && sub.status === 'PENDING' && <ReviewActions sub={sub} />}
+
+        {(isAdmin || sub.status === 'APPROVED') && (
           <Button variant="outline" size="sm" disabled={downloadingPdf} onClick={handleDownloadPdf}>
             <PrinterIcon className="mr-1.5 size-4" />
             {downloadingPdf ? 'Downloading…' : 'Download PDF'}
+          </Button>
+        )}
+
+        {sub.status === 'PENDING' && !isAdmin && (
+          <Button size="sm" variant="outline" onClick={() => navigate(`/my-submissions/${sub.id}/edit`)}>
+            <PencilIcon className="mr-1.5 size-4" />
+            Edit
           </Button>
         )}
 
@@ -252,16 +200,19 @@ export default function SubmissionViewPage() {
           </div>
         )}
 
-        {/* Form data view — dispatch to the correct viewer */}
-        {sub.templateId === 'BARANGAY_AR'  && <BrgyARView  d={formData as unknown as BrgyARFormData}  />}
-        {sub.templateId === 'BARANGAY_GPB' && <BrgyGPBView d={formData as unknown as BrgyGPBFormData} />}
-        {sub.templateId === 'CITY_GPB'     && <CityGPBView d={formData as unknown as CityGPBFormData} />}
-        {sub.templateId === 'CITY_AR'      && <CityARView  d={formData as unknown as CityARFormData}  />}
+        {/* Form data view — dispatch to the correct viewer; flagged parts show in red */}
+        <ReviewFlagsProvider comments={sub.comments ?? []} onResolve={isAdmin ? resolveFlag : undefined}>
+          <CorrectionChecklist />
+          {sub.templateId === 'BARANGAY_AR'  && <BrgyARView  d={formData as unknown as BrgyARFormData}  />}
+          {sub.templateId === 'BARANGAY_GPB' && <BrgyGPBView d={formData as unknown as BrgyGPBFormData} />}
+          {sub.templateId === 'CITY_GPB'     && <CityGPBView d={formData as unknown as CityGPBFormData} />}
+          {sub.templateId === 'CITY_AR'      && <CityARView  d={formData as unknown as CityARFormData}  />}
+        </ReviewFlagsProvider>
       </div>
 
       {/* Comments & attachments (not part of the PDF) */}
       <div className="no-print mt-5">
-        <CommentsThread submissionId={sub.id} comments={sub.comments ?? []} />
+        <CommentsThread submissionId={sub.id} comments={sub.comments ?? []} canFlag={isAdmin} />
       </div>
     </DashboardLayout>
   );

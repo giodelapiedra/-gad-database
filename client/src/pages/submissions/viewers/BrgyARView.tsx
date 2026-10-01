@@ -1,28 +1,38 @@
 import type { BrgyARFormData, BrgyARRow } from '@/hooks/useTemplates';
-import { peso, Cell, NumCell, HeaderInfo, SectionBanner, SubLabel, SubTotalRow, AttrRows } from './ViewerShared';
+import { peso, Cell, NumCell, HeaderInfo, SectionBanner, SubLabel, SubTotalRow } from './ViewerShared';
+import { GadBudgetShare } from '@/components/forms/GadBudgetShare';
+import { FlaggedSection, FlaggedRow } from '@/components/review/ReviewFlags';
+import { EvidenceList } from '@/components/forms/EvidenceField';
 
-function BrgyARDataRows({ rows }: { rows: BrgyARRow[] }) {
-  const COL = 'grid-cols-[220px_240px_240px_240px_150px_150px_196px]';
+function BrgyARDataRows({ rows, section, offset = 0 }: { rows: BrgyARRow[]; section: string; offset?: number }) {
+  const COL = 'grid-cols-[220px_240px_240px_240px_150px_150px_260px]';
   if (!rows.length) return <div className="px-4 py-3 text-[12px] text-[#A1A1AA]">No entries</div>;
   return (
     <>
       {rows.map((row, i) => (
-        <div key={i} className={`grid ${COL} border-b border-[#E4E4E7] bg-white`}>
-          <Cell className="whitespace-pre-wrap">{row.gadIssue}</Cell>
-          <Cell className="whitespace-pre-wrap">{row.ppa}</Cell>
-          <Cell className="whitespace-pre-wrap">{row.indicator}</Cell>
-          <Cell className="whitespace-pre-wrap">{row.accomplishments}</Cell>
-          <NumCell value={row.approvedBudget} />
-          <NumCell value={row.actualCost} />
-          <Cell>{row.variance}</Cell>
-        </div>
+        <FlaggedRow key={i} section={section} row={offset + i + 1}>
+          <div className={`grid ${COL} border-b border-[#E4E4E7] bg-white`}>
+            <Cell className="whitespace-pre-wrap"><span className="mr-1 font-semibold text-[#A1A1AA]">{offset + i + 1}.</span>{row.gadIssue}</Cell>
+            <Cell className="whitespace-pre-wrap">{row.ppa}</Cell>
+            <Cell className="whitespace-pre-wrap">{row.indicator}</Cell>
+            <Cell className="whitespace-pre-wrap">{row.accomplishments}</Cell>
+            <NumCell value={row.approvedBudget} />
+            <NumCell value={row.actualCost} />
+            <Cell>
+              {row.variance || (row.evidence?.length ? null : <span className="text-[#A1A1AA]">—</span>)}
+              {!!row.evidence?.length && (
+                <div className={row.variance ? 'mt-1.5' : ''}><EvidenceList files={row.evidence} /></div>
+              )}
+            </Cell>
+          </div>
+        </FlaggedRow>
       ))}
     </>
   );
 }
 
 export function BrgyARView({ d }: { d: BrgyARFormData }) {
-  const COL = 'grid-cols-[220px_240px_240px_240px_150px_150px_196px]';
+  const COL = 'grid-cols-[220px_240px_240px_240px_150px_150px_260px]';
   const ATTR_COL = 'grid-cols-[280px_140px_200px_200px_188px]';
 
   const st = (rows: BrgyARRow[]) => rows.reduce(
@@ -43,27 +53,32 @@ export function BrgyARView({ d }: { d: BrgyARFormData }) {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <div className="mb-4 text-center">
-          <p className="text-[15px] font-bold uppercase tracking-wide text-[#09090B]">
-            Barangay Annual Gender and Development (GAD) Accomplishment Report
-          </p>
-          <p className="mt-1 text-[14px] font-semibold text-[#09090B]">FY {d.fy}</p>
+      <FlaggedSection section="header">
+        <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
+          <div className="mb-4 text-center">
+            <p className="text-[15px] font-bold uppercase tracking-wide text-[#09090B]">
+              Barangay Annual Gender and Development (GAD) Accomplishment Report
+            </p>
+            <p className="mt-1 text-[14px] font-semibold text-[#09090B]">FY {d.fy}</p>
+          </div>
+          <HeaderInfo items={[
+            { label: 'Barangay',          value: d.barangay },
+            { label: 'City/Municipality', value: d.cityMunicipality },
+            { label: 'Province',          value: d.province },
+            { label: 'Region',            value: d.region },
+            { label: 'Total Brgy Budget', value: d.totalBrgyBudget ? `₱${peso(d.totalBrgyBudget)}` : '' },
+            { label: 'Total GAD Budget',  value: d.totalGadBudget  ? `₱${peso(d.totalGadBudget)}`  : '' },
+          ]} />
+          <div className="mt-4 sm:max-w-xs">
+            <GadBudgetShare totalBudget={d.totalBrgyBudget} gadBudget={d.totalGadBudget} budgetLabel="Barangay" />
+          </div>
         </div>
-        <HeaderInfo items={[
-          { label: 'Barangay',          value: d.barangay },
-          { label: 'City/Municipality', value: d.cityMunicipality },
-          { label: 'Province',          value: d.province },
-          { label: 'Region',            value: d.region },
-          { label: 'Total Brgy Budget', value: d.totalBrgyBudget ? `₱${peso(d.totalBrgyBudget)}` : '' },
-          { label: 'Total GAD Budget',  value: d.totalGadBudget  ? `₱${peso(d.totalGadBudget)}`  : '' },
-        ]} />
-      </div>
+      </FlaggedSection>
 
       {/* Main table */}
       <div className="overflow-hidden rounded-[10px] border border-[#D4D4D8] bg-white">
         <div className="overflow-x-auto">
-          <div className="min-w-[1396px]">
+          <div className="min-w-[1460px]">
             {/* Column Headers */}
             <div className={`grid ${COL} border-b border-[#D4D4D8] bg-[#18181B] text-[11px] font-semibold text-white`}>
               {[
@@ -82,61 +97,69 @@ export function BrgyARView({ d }: { d: BrgyARFormData }) {
             </div>
 
             {/* CLIENT-FOCUSED */}
-            <SectionBanner>CLIENT-FOCUSED</SectionBanner>
-            <SubLabel color="blue">1.&nbsp; Gender Issues</SubLabel>
-            <BrgyARDataRows rows={d.clientFocusedGenderIssues} />
-            <SubLabel color="amber">2.&nbsp; GAD Mandate</SubLabel>
-            <BrgyARDataRows rows={d.clientFocusedGadMandate} />
-            <SubTotalRow label="Sub-total A" app={subA.app} act={subA.act} />
+            <FlaggedSection section="clientFocused">
+              <SectionBanner>CLIENT-FOCUSED</SectionBanner>
+              <SubLabel color="blue">1.&nbsp; Gender Issues</SubLabel>
+              <BrgyARDataRows rows={d.clientFocusedGenderIssues} section="clientFocused" />
+              <SubLabel color="amber">2.&nbsp; GAD Mandate</SubLabel>
+              <BrgyARDataRows rows={d.clientFocusedGadMandate} section="clientFocused" offset={d.clientFocusedGenderIssues.length} />
+              <SubTotalRow label="Sub-total A" app={subA.app} act={subA.act} />
+            </FlaggedSection>
 
             {/* ORGANIZATION-FOCUSED */}
-            <SectionBanner>ORGANIZATION-FOCUSED</SectionBanner>
-            <SubLabel color="blue">1.&nbsp; Gender Issues</SubLabel>
-            <BrgyARDataRows rows={d.organizationGenderIssues} />
-            <SubLabel color="amber">2.&nbsp; GAD Mandate</SubLabel>
-            <BrgyARDataRows rows={d.organizationGadMandate} />
-            <SubTotalRow label="Sub-total B" app={subB.app} act={subB.act} />
+            <FlaggedSection section="organizationFocused">
+              <SectionBanner>ORGANIZATION-FOCUSED</SectionBanner>
+              <SubLabel color="blue">1.&nbsp; Gender Issues</SubLabel>
+              <BrgyARDataRows rows={d.organizationGenderIssues} section="organizationFocused" />
+              <SubLabel color="amber">2.&nbsp; GAD Mandate</SubLabel>
+              <BrgyARDataRows rows={d.organizationGadMandate} section="organizationFocused" offset={d.organizationGenderIssues.length} />
+              <SubTotalRow label="Sub-total B" app={subB.app} act={subB.act} />
+            </FlaggedSection>
           </div>
         </div>
       </div>
 
       {/* Attributed Programs */}
-      <div className="overflow-hidden rounded-[10px] border border-[#D4D4D8] bg-white">
-        <div className="overflow-x-auto">
-          <div className="min-w-[1008px]">
-            <SectionBanner>ATTRIBUTED PROGRAMS</SectionBanner>
-            <div className={`grid ${ATTR_COL} border-b border-[#D4D4D8] bg-[#18181B] text-[11px] font-semibold text-white`}>
-              {[
-                ['Title of Barangay Project', '(8)'],
-                ['HGDG PIMME/\nFIMME Score', '(9)'],
-                ['Total Annual Program/\nProject Cost', '(10)'],
-                ['GAD Attributed Project/\nProgram Cost', '(11)'],
-                ['Variance or Remarks', '(12)'],
-              ].map(([title, col]) => (
-                <div key={col} className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight whitespace-pre-line">
-                  {title}<br /><span className="text-[10px] font-normal text-zinc-400">{col}</span>
-                </div>
-              ))}
-            </div>
-            {d.attributedPrograms.map((row, i) => (
-              <div key={i} className={`grid ${ATTR_COL} border-b border-[#E4E4E7] bg-white`}>
-                <Cell className="whitespace-pre-wrap">{row.projectTitle}</Cell>
-                <NumCell value={row.hgdgScore} />
-                <NumCell value={row.totalBudget} />
-                <NumCell value={row.gadAttributedBudget} />
-                <Cell>{row.varianceRemarks}</Cell>
+      <FlaggedSection section="attributedPrograms">
+        <div className="overflow-hidden rounded-[10px] border border-[#D4D4D8] bg-white">
+          <div className="overflow-x-auto">
+            <div className="min-w-[1008px]">
+              <SectionBanner>ATTRIBUTED PROGRAMS</SectionBanner>
+              <div className={`grid ${ATTR_COL} border-b border-[#D4D4D8] bg-[#18181B] text-[11px] font-semibold text-white`}>
+                {[
+                  ['Title of Barangay Project', '(8)'],
+                  ['HGDG PIMME/\nFIMME Score', '(9)'],
+                  ['Total Annual Program/\nProject Cost', '(10)'],
+                  ['GAD Attributed Project/\nProgram Cost', '(11)'],
+                  ['Variance or Remarks', '(12)'],
+                ].map(([title, col]) => (
+                  <div key={col} className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight whitespace-pre-line">
+                    {title}<br /><span className="text-[10px] font-normal text-zinc-400">{col}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-            <div className={`grid ${ATTR_COL} bg-[#FAFAFA]`}>
-              <div className="border-r border-[#D4D4D8] px-4 py-2 text-[12px] font-bold">Sub-total C</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2" />
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold tabular-nums">{peso(subC.tot)}</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold tabular-nums">{peso(subC.attr)}</div>
-              <div className="px-3 py-2" />
+              {d.attributedPrograms.map((row, i) => (
+                <FlaggedRow key={i} section="attributedPrograms" row={i + 1}>
+                  <div className={`grid ${ATTR_COL} border-b border-[#E4E4E7] bg-white`}>
+                    <Cell className="whitespace-pre-wrap"><span className="mr-1 font-semibold text-[#A1A1AA]">{i + 1}.</span>{row.projectTitle}</Cell>
+                    <NumCell value={row.hgdgScore} />
+                    <NumCell value={row.totalBudget} />
+                    <NumCell value={row.gadAttributedBudget} />
+                    <Cell>{row.varianceRemarks}</Cell>
+                  </div>
+                </FlaggedRow>
+              ))}
+              <div className={`grid ${ATTR_COL} bg-[#FAFAFA]`}>
+                <div className="border-r border-[#D4D4D8] px-4 py-2 text-[12px] font-bold">Sub-total C</div>
+                <div className="border-r border-[#D4D4D8] px-3 py-2" />
+                <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold tabular-nums">{peso(subC.tot)}</div>
+                <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold tabular-nums">{peso(subC.attr)}</div>
+                <div className="px-3 py-2" />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </FlaggedSection>
 
       {/* Grand Total */}
       <div className="overflow-hidden rounded-[10px] border border-[#D4D4D8]">
@@ -156,21 +179,23 @@ export function BrgyARView({ d }: { d: BrgyARFormData }) {
       </div>
 
       {/* Signatories */}
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          {[
-            { label: 'Prepared by (Barangay GAD Focal)', value: d.preparedBy },
-            { label: 'Approved by (Punong Barangay)',    value: d.approvedBy },
-            { label: 'Date',                             value: d.date },
-          ].map(({ label, value }) => (
-            <div key={label} className="rounded-md border border-[#EBEBEB] px-3 py-2">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-[#71717A]">{label}</p>
-              <p className="mt-0.5 text-[13px] text-[#09090B]">{value || '—'}</p>
-            </div>
-          ))}
+      <FlaggedSection section="signatories">
+        <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
+          <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {[
+              { label: 'Prepared by (Barangay GAD Focal)', value: d.preparedBy },
+              { label: 'Approved by (Punong Barangay)',    value: d.approvedBy },
+              { label: 'Date',                             value: d.date },
+            ].map(({ label, value }) => (
+              <div key={label} className="rounded-md border border-[#EBEBEB] px-3 py-2">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-[#71717A]">{label}</p>
+                <p className="mt-0.5 text-[13px] text-[#09090B]">{value || '—'}</p>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </FlaggedSection>
     </div>
   );
 }

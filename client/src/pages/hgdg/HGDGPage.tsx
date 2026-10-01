@@ -1,9 +1,10 @@
 import { useState, useRef } from 'react';
 import {
-  FileTextIcon, PlusIcon, Settings2Icon, EyeIcon,
-  UploadIcon, CheckCircle2Icon, Trash2Icon, PencilIcon,
-  DownloadIcon, ArrowLeftIcon, SaveIcon, SendIcon,
-  BookmarkIcon, AlertCircleIcon,
+  FileTextIcon, PlusIcon, EyeIcon,
+  CheckCircle2Icon, Trash2Icon, PencilIcon,
+  UploadIcon, DownloadIcon, ArrowLeftIcon,
+  SendIcon, BookmarkIcon, AlertCircleIcon,
+  Settings2Icon, SaveIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -28,7 +29,7 @@ import { useSubmitForApproval, useSaveDraft } from '@/hooks/useSubmissions';
 import { useAuth } from '@/hooks/useAuth';
 import { PDFOverlayViewer } from '@/components/hgdg/PDFOverlayViewer';
 
-// ─── Template card ────────────────────────────────────────────────────────────
+// ─── Template card ─────────────────────────────────────────────────────────────
 
 function TemplateCard({
   template,
@@ -68,7 +69,7 @@ function TemplateCard({
             </Badge>
             {fieldCount > 0 && (
               <Badge variant="outline" className="text-[10px] border-blue-200 text-blue-700 bg-blue-50">
-                {fieldCount} fields mapped
+                {fieldCount} fields detected
               </Badge>
             )}
           </div>
@@ -90,20 +91,97 @@ function TemplateCard({
               <Settings2Icon className="mr-1.5 size-3.5" />
               Map Fields
             </Button>
-            <Button size="sm" variant="outline" className="px-2" onClick={onTogglePublish} title={template.isPublished ? 'Unpublish' : 'Publish'}>
-              {template.isPublished ? <EyeIcon className="size-3.5 text-amber-500" /> : <CheckCircle2Icon className="size-3.5 text-emerald-500" />}
+            <Button
+              size="sm" variant="outline" className="px-2"
+              onClick={onTogglePublish}
+              title={template.isPublished ? 'Unpublish' : 'Publish'}
+            >
+              {template.isPublished
+                ? <EyeIcon className="size-3.5 text-amber-500" />
+                : <CheckCircle2Icon className="size-3.5 text-emerald-500" />}
             </Button>
             <Button size="sm" variant="outline" className="px-2" onClick={onDelete} title="Delete">
               <Trash2Icon className="size-3.5 text-red-500" />
             </Button>
           </div>
         )}
+        {template.isPublished && fieldCount === 0 && (
+          <p className="text-[11px] text-center text-[#71717A]">No fields detected in this PDF.</p>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── Fill view ────────────────────────────────────────────────────────────────
+// ─── Map view (admin) ──────────────────────────────────────────────────────────
+
+function MapView({ templateId, onBack }: { templateId: string; onBack: () => void }) {
+  const { data: template, isLoading: tLoading } = useHGDGTemplate(templateId);
+  const { data: pdfUrl, isLoading: urlLoading } = useHGDGPdfUrl(templateId);
+  const [fields, setFields] = useState<FieldDef[]>([]);
+  const [initialized, setInitialized] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const updateFieldMap = useUpdateFieldMap();
+
+  if (template && !initialized) {
+    setFields(template.fieldMap);
+    setInitialized(true);
+  }
+
+  async function handleSave() {
+    try {
+      setBusy(true);
+      await updateFieldMap.mutateAsync({ id: templateId, fieldMap: fields });
+      toast.success('Field map saved!');
+    } catch { toast.error('Failed to save field map.'); }
+    finally { setBusy(false); }
+  }
+
+  if (tLoading || urlLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-48" />
+        <Skeleton className="h-[800px] w-full" />
+      </div>
+    );
+  }
+
+  if (!template || !pdfUrl) return <div className="text-[13px] text-red-500">Failed to load template.</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Button variant="outline" size="sm" onClick={onBack}>
+          <ArrowLeftIcon className="mr-1.5 size-4" /> Back
+        </Button>
+        <div>
+          <h2 className="text-[15px] font-semibold text-[#09090B]">Map Fields — {template.name}</h2>
+          <p className="text-[12px] text-[#71717A]">Click and drag on the PDF to create a field. Click an existing field to edit or delete it.</p>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <Badge variant="outline" className="text-[11px]">{fields.length} fields</Badge>
+          <Button size="sm" onClick={handleSave} disabled={busy}>
+            <SaveIcon className="mr-1.5 size-4" />
+            {busy ? 'Saving…' : 'Save Field Map'}
+          </Button>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-2.5 text-[12px] text-orange-700">
+        <strong>How to use:</strong> Click and drag on the PDF to draw a field box. Click an existing field (orange) to select and edit its label/type. Navigate pages with Prev/Next.
+      </div>
+
+      <PDFOverlayViewer
+        pdfUrl={pdfUrl}
+        fields={fields}
+        mode="map"
+        onFieldsChange={setFields}
+      />
+    </div>
+  );
+}
+
+// ─── Fill view ─────────────────────────────────────────────────────────────────
 
 function FillView({ templateId, onBack }: { templateId: string; onBack: () => void }) {
   const { data: template, isLoading: tLoading } = useHGDGTemplate(templateId);
@@ -115,10 +193,6 @@ function FillView({ templateId, onBack }: { templateId: string; onBack: () => vo
   const isEncoder = user?.role === 'ENCODER';
   const submitMutation = useSubmitForApproval();
   const draftMutation = useSaveDraft();
-
-  function onChange(fieldId: string, value: string) {
-    setValues((prev) => ({ ...prev, [fieldId]: value }));
-  }
 
   async function handleSaveDraft() {
     if (!template) return;
@@ -178,14 +252,12 @@ function FillView({ templateId, onBack }: { templateId: string; onBack: () => vo
         <div className="ml-auto flex items-center gap-2">
           {isEncoder && (
             <Button variant="outline" size="sm" onClick={handleSaveDraft} disabled={busy}>
-              <BookmarkIcon className="mr-1.5 size-4" />
-              Save Draft
+              <BookmarkIcon className="mr-1.5 size-4" /> Save Draft
             </Button>
           )}
           {isEncoder ? (
             <Button size="sm" onClick={() => setConfirmOpen(true)} disabled={busy}>
-              <SendIcon className="mr-1.5 size-4" />
-              Submit for Approval
+              <SendIcon className="mr-1.5 size-4" /> Submit for Approval
             </Button>
           ) : (
             <Button size="sm" onClick={handleDownload} disabled={busy}>
@@ -196,17 +268,15 @@ function FillView({ templateId, onBack }: { templateId: string; onBack: () => vo
         </div>
       </div>
 
-      {/* Info */}
       <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-2.5 text-[12px] text-blue-700">
         Click on any highlighted field to fill it in. Use Tab to move between fields.
       </div>
 
-      {/* PDF Viewer */}
       <PDFOverlayViewer
         pdfUrl={pdfUrl}
         fields={template.fieldMap}
         values={values}
-        onChange={onChange}
+        onChange={(fieldId, value) => setValues((prev) => ({ ...prev, [fieldId]: value }))}
         mode="fill"
       />
 
@@ -214,8 +284,7 @@ function FillView({ templateId, onBack }: { templateId: string; onBack: () => vo
         <Button variant="outline" onClick={onBack}>Cancel</Button>
         {isEncoder ? (
           <Button onClick={() => setConfirmOpen(true)} disabled={busy}>
-            <SendIcon className="mr-2 size-4" />
-            Submit for Approval
+            <SendIcon className="mr-2 size-4" /> Submit for Approval
           </Button>
         ) : (
           <Button onClick={handleDownload} disabled={busy}>
@@ -225,7 +294,6 @@ function FillView({ templateId, onBack }: { templateId: string; onBack: () => vo
         )}
       </div>
 
-      {/* Confirm dialog */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
@@ -250,77 +318,7 @@ function FillView({ templateId, onBack }: { templateId: string; onBack: () => vo
   );
 }
 
-// ─── Map view (admin) ─────────────────────────────────────────────────────────
-
-function MapView({ templateId, onBack }: { templateId: string; onBack: () => void }) {
-  const { data: template, isLoading: tLoading } = useHGDGTemplate(templateId);
-  const { data: pdfUrl, isLoading: urlLoading } = useHGDGPdfUrl(templateId);
-  const [fields, setFields] = useState<FieldDef[]>([]);
-  const [initialized, setInitialized] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const updateFieldMap = useUpdateFieldMap();
-
-  // initialize fields from loaded template once
-  if (template && !initialized) {
-    setFields(template.fieldMap);
-    setInitialized(true);
-  }
-
-  async function handleSave() {
-    if (!template) return;
-    try {
-      setBusy(true);
-      await updateFieldMap.mutateAsync({ id: templateId, fieldMap: fields });
-      toast.success('Field map saved!');
-    } catch { toast.error('Failed to save field map.'); }
-    finally { setBusy(false); }
-  }
-
-  if (tLoading || urlLoading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-48" />
-        <Skeleton className="h-[800px] w-full" />
-      </div>
-    );
-  }
-
-  if (!template || !pdfUrl) return <div className="text-[13px] text-red-500">Failed to load template.</div>;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Button variant="outline" size="sm" onClick={onBack}>
-          <ArrowLeftIcon className="mr-1.5 size-4" /> Back
-        </Button>
-        <div>
-          <h2 className="text-[15px] font-semibold text-[#09090B]">Map Fields — {template.name}</h2>
-          <p className="text-[12px] text-[#71717A]">Click and drag on the PDF to define fillable fields. Click a field to edit its label and type.</p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <Badge variant="outline" className="text-[11px]">{fields.length} fields</Badge>
-          <Button size="sm" onClick={handleSave} disabled={busy}>
-            <SaveIcon className="mr-1.5 size-4" />
-            {busy ? 'Saving…' : 'Save Field Map'}
-          </Button>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-orange-100 bg-orange-50 px-4 py-2.5 text-[12px] text-orange-700">
-        <strong>How to use:</strong> Click and drag on the PDF to create a field. Click an existing field (orange box) to select and edit it. Navigate pages using Prev/Next.
-      </div>
-
-      <PDFOverlayViewer
-        pdfUrl={pdfUrl}
-        fields={fields}
-        mode="map"
-        onFieldsChange={setFields}
-      />
-    </div>
-  );
-}
-
-// ─── Upload template dialog (admin) ──────────────────────────────────────────
+// ─── Upload template dialog (admin) ───────────────────────────────────────────
 
 function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [name, setName] = useState('');
@@ -339,7 +337,7 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
       if (pullout) fd.append('pullout', pullout);
       fd.append('pdf', file);
       await createMutation.mutateAsync(fd);
-      toast.success('Template uploaded!');
+      toast.success('Template uploaded! Fillable fields detected automatically.');
       onClose();
       setName(''); setSector(''); setPullout(''); setFile(null);
     } catch (e: any) {
@@ -352,7 +350,9 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-[15px]">Upload HGDG Template</DialogTitle>
-          <DialogDescription className="text-[13px]">Upload a PDF and define its sector.</DialogDescription>
+          <DialogDescription className="text-[13px]">
+            Upload a PDF checklist — empty cells are detected automatically as fillable fields.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 py-2">
           <div className="space-y-1">
@@ -390,7 +390,7 @@ function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void })
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Main Page ─────────────────────────────────────────────────────────────────
 
 type ViewState =
   | { mode: 'list' }
@@ -408,7 +408,7 @@ export default function HGDGPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<HGDGTemplate | null>(null);
 
   if (view.mode === 'fill') return (
-    <DashboardLayout>
+    <DashboardLayout title="HGDG Checklists" breadcrumb="HGDG / Fill Form">
       <div className="mx-auto max-w-[900px] px-4 py-6">
         <FillView templateId={view.templateId} onBack={() => setView({ mode: 'list' })} />
       </div>
@@ -416,7 +416,7 @@ export default function HGDGPage() {
   );
 
   if (view.mode === 'map') return (
-    <DashboardLayout>
+    <DashboardLayout title="HGDG Checklists" breadcrumb="HGDG / Map Fields">
       <div className="mx-auto max-w-[900px] px-4 py-6">
         <MapView templateId={view.templateId} onBack={() => setView({ mode: 'list' })} />
       </div>
@@ -424,9 +424,8 @@ export default function HGDGPage() {
   );
 
   return (
-    <DashboardLayout>
+    <DashboardLayout title="HGDG Checklists" breadcrumb="HGDG">
       <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-[20px] font-bold text-[#09090B]">HGDG Checklists</h1>
@@ -440,7 +439,6 @@ export default function HGDGPage() {
           )}
         </div>
 
-        {/* Templates grid */}
         {isLoading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-48" />)}
@@ -449,7 +447,7 @@ export default function HGDGPage() {
           <div className="flex flex-col items-center gap-3 py-20 text-center">
             <FileTextIcon className="size-10 text-[#D4D4D8]" />
             <p className="text-[14px] font-medium text-[#52525B]">No HGDG templates yet</p>
-            {isAdmin && <p className="text-[12px] text-[#71717A]">Upload the sector PDF templates to get started.</p>}
+            {isAdmin && <p className="text-[12px] text-[#71717A]">Upload PDF checklists — fillable cells are auto-detected.</p>}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -475,13 +473,12 @@ export default function HGDGPage() {
 
       <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} />
 
-      {/* Delete confirm */}
       <Dialog open={!!deleteConfirm} onOpenChange={(o) => !o && setDeleteConfirm(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="text-[15px]">Delete Template?</DialogTitle>
             <DialogDescription className="text-[13px]">
-              This will permanently delete <strong>{deleteConfirm?.name}</strong> and its PDF from storage. This cannot be undone.
+              This will permanently delete <strong>{deleteConfirm?.name}</strong> and its PDF from storage.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

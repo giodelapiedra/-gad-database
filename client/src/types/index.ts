@@ -8,6 +8,8 @@ export interface User {
   role: Role;
   isActive: boolean;
   createdAt: string;
+  /** Assigned barangay for barangay-level encoders; null for city/office encoders. */
+  barangay?: string | null;
   department: { id: string; name: string; code: string; color: string } | null;
 }
 

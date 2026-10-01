@@ -4,6 +4,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useGetSubmission } from '@/hooks/useSubmissions';
 import { useAuth } from '@/hooks/useAuth';
+import { ReviewFlagsProvider, CorrectionChecklist } from '@/components/review/ReviewFlags';
 import { SubmissionFormEditor } from './SubmissionFormEditor';
 
 export default function SubmissionEditPage() {
@@ -22,13 +23,18 @@ export default function SubmissionEditPage() {
           <Skeleton className="h-64 rounded-[10px]" />
         </div>
       ) : (
-        <SubmissionFormEditor
-          templateId={sub.templateId}
-          initialData={sub.formData}
-          editId={sub.id}
-          onBack={() => navigate(backPath)}
-          isDraftEdit={sub.status === 'DRAFT'}
-        />
+        // The reviewer's flags stay visible (in red) while the encoder corrects the form.
+        <ReviewFlagsProvider comments={sub.comments ?? []}>
+          <CorrectionChecklist />
+          <SubmissionFormEditor
+            templateId={sub.templateId}
+            initialData={sub.formData}
+            editId={sub.id}
+            onBack={() => navigate(backPath)}
+            isDraftEdit={sub.status === 'DRAFT'}
+            isPendingEdit={sub.status === 'PENDING'}
+          />
+        </ReviewFlagsProvider>
       )}
     </DashboardLayout>
   );

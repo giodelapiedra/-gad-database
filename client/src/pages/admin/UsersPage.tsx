@@ -55,6 +55,7 @@ import {
   type UserRecord,
 } from '@/hooks/useUsers';
 import { useGetDepartments } from '@/hooks/useDepartments';
+import { TANAUAN_BARANGAYS } from '@/lib/location';
 import { useAuth } from '@/hooks/useAuth';
 import { formatDate } from '@/utils/formatters';
 
@@ -73,6 +74,7 @@ interface UserFormState {
   password: string;
   role: 'ADMIN' | 'ENCODER';
   departmentId: string;
+  barangay: string;
 }
 
 function UserModal({
@@ -95,6 +97,7 @@ function UserModal({
     password: '',
     role: editUser?.role ?? 'ENCODER',
     departmentId: editUser?.departmentId ?? '',
+    barangay: editUser?.barangay ?? '',
   });
   const [showPass, setShowPass] = useState(false);
 
@@ -102,11 +105,11 @@ function UserModal({
   const [lastEditId, setLastEditId] = useState<string | null>(null);
   if (editUser && editUser.id !== lastEditId) {
     setLastEditId(editUser.id);
-    setForm({ name: editUser.name, email: editUser.email, password: '', role: editUser.role, departmentId: editUser.departmentId ?? '' });
+    setForm({ name: editUser.name, email: editUser.email, password: '', role: editUser.role, departmentId: editUser.departmentId ?? '', barangay: editUser.barangay ?? '' });
   }
   if (!editUser && lastEditId !== null) {
     setLastEditId(null);
-    setForm({ name: '', email: '', password: '', role: 'ENCODER', departmentId: '' });
+    setForm({ name: '', email: '', password: '', role: 'ENCODER', departmentId: '', barangay: '' });
   }
 
   const isPending = createUser.isPending || updateUser.isPending;
@@ -131,6 +134,7 @@ function UserModal({
           name: form.name,
           role: form.role,
           departmentId: form.departmentId || null,
+          barangay: form.role === 'ENCODER' ? (form.barangay || null) : null,
           ...(form.password ? { password: form.password } : {}),
         });
         toast.success('User updated successfully');
@@ -141,6 +145,7 @@ function UserModal({
           password: form.password,
           role: form.role,
           ...(form.departmentId ? { departmentId: form.departmentId } : {}),
+          ...(form.role === 'ENCODER' && form.barangay ? { barangay: form.barangay } : {}),
         });
         toast.success('User account created successfully');
       }
@@ -260,7 +265,7 @@ function UserModal({
               return (
                 <Select
                   value={form.departmentId || '__none__'}
-                  onValueChange={(v) => setForm((f) => ({ ...f, departmentId: v === '__none__' ? '' : v }))}
+                  onValueChange={(v) => setForm((f: UserFormState): UserFormState => ({ ...f, departmentId: v === '__none__' ? '' : (v ?? '') }))}
                 >
                   <SelectTrigger>
                     <SelectValue>
@@ -301,6 +306,37 @@ function UserModal({
               );
             })()}
           </div>
+
+          {/* Assigned Barangay — encoders only */}
+          {form.role === 'ENCODER' && (
+            <div className="space-y-1.5">
+              <Label>
+                Assigned Barangay{' '}
+                <span className="text-[11px] font-normal text-[#A1A1AA]">(for barangay encoders)</span>
+              </Label>
+              <Select
+                value={form.barangay || '__none__'}
+                onValueChange={(v) => setForm((f: UserFormState): UserFormState => ({ ...f, barangay: v === '__none__' ? '' : (v ?? '') }))}
+              >
+                <SelectTrigger>
+                  <SelectValue>
+                    {form.barangay
+                      ? <span>{form.barangay}</span>
+                      : <span className="text-muted-foreground">— None (city / office encoder) —</span>}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  <SelectItem value="__none__">— None (city / office encoder) —</SelectItem>
+                  {TANAUAN_BARANGAYS.map((b) => (
+                    <SelectItem key={b} value={b}>{b}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-[#A1A1AA]">
+                Barangay of City of Tanauan, Batangas. It is filled in and locked on this encoder's Barangay GPB / AR forms.
+              </p>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
@@ -482,6 +518,9 @@ export default function UsersPage() {
                       </div>
                     ) : (
                       <span className="text-[12px] text-[#A1A1AA]">—</span>
+                    )}
+                    {u.barangay && (
+                      <p className="truncate text-[11px] text-[#A1A1AA]">Brgy. {u.barangay}</p>
                     )}
                   </div>
 

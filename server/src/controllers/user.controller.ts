@@ -4,6 +4,9 @@ import { z } from 'zod';
 import prisma from '../utils/db';
 import { AuthRequest } from '../types';
 import { sendSuccess, sendError } from '../utils/response';
+import { isTanauanBarangay } from '../utils/location';
+
+const barangaySchema = z.string().refine(isTanauanBarangay, 'Unknown barangay. Pick one from the list.');
 
 const createUserSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -11,6 +14,7 @@ const createUserSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
   role: z.enum(['ADMIN', 'ENCODER']).default('ENCODER'),
   departmentId: z.string().optional(),
+  barangay: barangaySchema.nullable().optional(),
 }).refine((d) => d.role !== 'ENCODER' || !!(d.departmentId && d.departmentId.length > 0), {
   message: 'Encoders must be assigned a department.',
   path: ['departmentId'],
@@ -22,6 +26,7 @@ const updateUserSchema = z.object({
   isActive: z.boolean().optional(),
   password: z.string().min(6, 'Password must be at least 6 characters').optional(),
   departmentId: z.string().nullable().optional(),
+  barangay: barangaySchema.nullable().optional(),
 });
 
 export async function getUsers(req: AuthRequest, res: Response): Promise<void> {
@@ -34,6 +39,7 @@ export async function getUsers(req: AuthRequest, res: Response): Promise<void> {
         role: true,
         isActive: true,
         departmentId: true,
+        barangay: true,
         department: { select: { id: true, name: true, code: true } },
         createdAt: true,
         updatedAt: true,
@@ -55,7 +61,7 @@ export async function createUser(req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    const { name, email, password, role, departmentId } = parsed.data;
+    const { name, email, password, role, departmentId, barangay } = parsed.data;
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -65,7 +71,7 @@ export async function createUser(req: AuthRequest, res: Response): Promise<void>
 
     const hashed = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({
-      data: { name, email, password: hashed, role, ...(departmentId ? { departmentId } : {}) },
+      data: { name, email, password: hashed, role, ...(departmentId ? { departmentId } : {}), ...(barangay && role === 'ENCODER' ? { barangay } : {}) },
       select: {
         id: true,
         name: true,
@@ -73,6 +79,7 @@ export async function createUser(req: AuthRequest, res: Response): Promise<void>
         role: true,
         isActive: true,
         departmentId: true,
+        barangay: true,
         department: { select: { id: true, name: true, code: true } },
         createdAt: true,
       },
@@ -107,13 +114,14 @@ export async function updateUser(req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    const { name, role, isActive, password, departmentId } = parsed.data;
+    const { name, role, isActive, password, departmentId, barangay } = parsed.data;
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
     if (role !== undefined) updateData.role = role;
     if (isActive !== undefined) updateData.isActive = isActive;
     if (password) updateData.password = await bcrypt.hash(password, 12);
     if (departmentId !== undefined) updateData.departmentId = departmentId ?? null;
+    if (barangay !== undefined) updateData.barangay = barangay ?? null;
 
     if (Object.keys(updateData).length === 0) {
       sendError(res, 'No fields to update.');
@@ -134,6 +142,8 @@ export async function updateUser(req: AuthRequest, res: Response): Promise<void>
       sendError(res, 'Encoders must be assigned a department.');
       return;
     }
+    // Barangay assignment only applies to encoders.
+    if (effectiveRole === 'ADMIN') updateData.barangay = null;
 
     const user = await prisma.user.update({
       where: { id },
@@ -145,6 +155,7 @@ export async function updateUser(req: AuthRequest, res: Response): Promise<void>
         role: true,
         isActive: true,
         departmentId: true,
+        barangay: true,
         department: { select: { id: true, name: true, code: true } },
         createdAt: true,
         updatedAt: true,

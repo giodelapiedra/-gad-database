@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AxiosError } from 'axios';
 import api from '@/lib/axios';
+import type { EvidenceFile } from '@/hooks/useTemplates';
 
 export type SubmissionStatus = 'DRAFT' | 'PENDING' | 'APPROVED' | 'RETURNED';
 
@@ -8,6 +10,12 @@ export interface SubmissionComment {
   body: string;
   attachmentUrl: string | null;
   attachmentName: string | null;
+  /** Form part the reviewer flagged for correction; null = general comment. */
+  section: string | null;
+  /** 1-based row within `section`, when the comment points at a specific row. */
+  rowNumber: number | null;
+  resolvedAt: string | null;
+  resolvedBy: { id: string; name: string } | null;
   createdAt: string;
   author: { id: string; name: string; role: 'ADMIN' | 'ENCODER' };
 }
@@ -54,6 +62,7 @@ export interface SubmissionsPage {
 export interface SubmissionsParams {
   status?: SubmissionStatus | 'ALL';
   department?: string; // departmentId, '' or 'ALL' = no filter
+  templateId?: string;
   page?: number;
   limit?: number;
 }
@@ -62,10 +71,11 @@ export interface SubmissionsParams {
 
 export function useGetSubmissions(params: SubmissionsParams = {}) {
   // 'ALL' means no status filter — omit it from the request
-  const { status, department, page = 1, limit = 15 } = params;
+  const { status, department, templateId, page = 1, limit = 15 } = params;
   const apiParams: Record<string, unknown> = { page, limit };
   if (status && status !== 'ALL') apiParams['status'] = status;
   if (department && department !== 'ALL') apiParams['department'] = department;
+  if (templateId) apiParams['templateId'] = templateId;
 
   return useQuery<SubmissionsPage>({
     queryKey: ['submissions', apiParams],
@@ -188,11 +198,29 @@ export function useUpdateSubmission() {
 export function useAddComment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (payload: { id: string; body: string; file?: File | null }) => {
+    mutationFn: async (payload: {
+      id: string; body: string; file?: File | null;
+      section?: string | null; rowNumber?: number | null;
+    }) => {
       const fd = new FormData();
       fd.append('body', payload.body);
       if (payload.file) fd.append('attachment', payload.file);
+      if (payload.section) fd.append('section', payload.section);
+      if (payload.section && payload.rowNumber) fd.append('rowNumber', String(payload.rowNumber));
       const res = await api.post(`/submissions/${payload.id}/comments`, fd);
+      return res.data.data as SubmissionComment;
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['submissions', 'single', vars.id] });
+    },
+  });
+}
+
+export function useResolveComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { id: string; commentId: string; resolved: boolean }) => {
+      const res = await api.patch(`/submissions/${payload.id}/comments/${payload.commentId}`, { resolved: payload.resolved });
       return res.data.data as SubmissionComment;
     },
     onSuccess: (_data, vars) => {
@@ -208,12 +236,15 @@ export function useReviewSubmission() {
       id: string;
       status: 'APPROVED' | 'RETURNED';
       remarks?: string;
+      /** `updatedAt` of the version on screen; the server rejects a stale review (409). */
+      expectedUpdatedAt?: string;
     }) => {
       const { id, ...body } = payload;
       const res = await api.patch(`/submissions/${id}/review`, body);
       return res.data.data as FormSubmission;
     },
-    onSuccess: () => {
+    // Refresh on failure too: a 409 means the form changed, so show the new version.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ['submissions'] });
     },
   });
@@ -241,4 +272,18 @@ export async function generateFromSubmission(id: string, format: 'xlsx' | 'pdf' 
   a.click();
   a.remove();
   window.URL.revokeObjectURL(url);
+}
+
+/** Upload one proof file for an AR row's Variance or Remarks. */
+export async function uploadEvidence(file: File): Promise<EvidenceFile> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await api.post('/submissions/evidence', fd);
+  return res.data.data as EvidenceFile;
+}
+
+/** The server's `message` for a failed request, else `fallback`. */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  const msg = err instanceof AxiosError ? (err.response?.data as { message?: unknown } | undefined)?.message : undefined;
+  return typeof msg === 'string' && msg ? msg : fallback;
 }

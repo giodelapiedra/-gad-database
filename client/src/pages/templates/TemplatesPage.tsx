@@ -1,11 +1,9 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   FileSpreadsheetIcon,
   FileTextIcon,
   DownloadIcon,
   ArrowLeftIcon,
-  PlusIcon,
-  Trash2Icon,
   ChevronRightIcon,
   BuildingIcon,
   ClipboardListIcon,
@@ -13,14 +11,16 @@ import {
   SendIcon,
   AlertCircleIcon,
   BookmarkIcon,
+  HistoryIcon,
+  CheckCircle2Icon,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useSearchParams } from 'react-router-dom';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -50,9 +50,32 @@ import {
   type CityGPBRow,
   type CityARRow,
   type AttributedRow,
+  type EvidenceFile,
 } from '@/hooks/useTemplates';
 import { useAuth } from '@/hooks/useAuth';
-import { useSubmitForApproval, useUpdateSubmission, useSaveDraft } from '@/hooks/useSubmissions';
+import { useAutosavedState, type AutosaveControls } from '@/hooks/useAutosavedState';
+import { useSubmitForApproval, useUpdateSubmission, useSaveDraft, apiErrorMessage, type FormSubmission } from '@/hooks/useSubmissions';
+import {
+  SheetGrid,
+  SheetHead,
+  SheetBanner,
+  SheetRow,
+  SheetCell,
+  SheetNumCell,
+  SheetTotalRow,
+  SheetAddRow,
+  SheetSubBanner,
+  SheetSlot,
+  type SheetColumn,
+} from '@/components/forms/SheetGrid';
+import { GadBudgetShare } from '@/components/forms/GadBudgetShare';
+import { GpbImportPanel } from '@/components/forms/GpbImportPanel';
+import { EvidenceField } from '@/components/forms/EvidenceField';
+import { importBrgyGpb, importCityGpb } from '@/lib/gpbToAr';
+import { validateGadShare } from '@/lib/gadBudget';
+import { LockedField, BarangayField } from '@/components/forms/LocationFields';
+import { withFixedLocation } from '@/lib/location';
+import { FlaggedSection, FlaggedRow } from '@/components/review/ReviewFlags';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -69,19 +92,6 @@ function N({ value, onChange, className = '' }: {
   );
 }
 
-function T({ value, onChange, placeholder = '', rows = 2, className = '' }: {
-  value: string; onChange: (v: string) => void;
-  placeholder?: string; rows?: number; className?: string;
-}) {
-  return (
-    <Textarea
-      rows={rows} value={value} placeholder={placeholder}
-      onChange={(e) => onChange(e.target.value)}
-      className={`resize-none text-[12px] ${className}`}
-    />
-  );
-}
-
 function F({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
@@ -89,107 +99,6 @@ function F({ label, required, children }: { label: string; required?: boolean; c
         {label}{required && <span className="ml-0.5 text-red-500">*</span>}
       </Label>
       {children}
-    </div>
-  );
-}
-
-function SectionHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="col-span-full rounded-md bg-[#18181B] px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest text-white">
-      {children}
-    </div>
-  );
-}
-void SectionHeader;
-
-function SubSection({ label }: { label: string }) {
-  return (
-    <div className="col-span-full rounded bg-[#F4F4F5] px-3 py-1 text-[11px] font-semibold text-[#52525B]">
-      {label}
-    </div>
-  );
-}
-void SubSection;
-
-function AddRowBtn({ onClick, label = 'Add Row' }: { onClick: () => void; label?: string }) {
-  return (
-    <button
-      type="button" onClick={onClick}
-      className="col-span-full flex items-center gap-1.5 rounded-md border border-dashed border-[#D4D4D8] px-3 py-1.5 text-[12px] text-[#71717A] transition-colors hover:border-[#18181B] hover:text-[#18181B]"
-    >
-      <PlusIcon className="size-3.5" /> {label}
-    </button>
-  );
-}
-void AddRowBtn;
-
-function DelBtn({ onClick }: { onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick}
-      className="shrink-0 rounded p-1 text-[#A1A1AA] transition-colors hover:bg-red-50 hover:text-red-500"
-      title="Remove row"
-    >
-      <Trash2Icon className="size-3.5" />
-    </button>
-  );
-}
-
-// ─── Attributed Programs section (shared) ────────────────────────────────
-
-function AttributedSection({
-  rows, onChange, showOffice = false,
-}: {
-  rows: AttributedRow[];
-  onChange: (rows: AttributedRow[]) => void;
-  showOffice?: boolean;
-}) {
-  function add() { onChange([...rows, blankAttrRow()]); }
-  function remove(i: number) {
-    if (rows.length <= 1) { toast.error('At least one row is required'); return; }
-    onChange(rows.filter((_, idx) => idx !== i));
-  }
-  function upd<K extends keyof AttributedRow>(i: number, k: K, v: AttributedRow[K]) {
-    onChange(rows.map((r, idx) => idx === i ? { ...r, [k]: v } : r));
-  }
-
-  return (
-    <div className="space-y-2">
-      {rows.map((row, i) => (
-        <div key={i} className="flex items-start gap-2 rounded-md border border-[#EBEBEB] bg-[#FAFAFA] p-3">
-          <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-4">
-            <F label="Title of Project/Program">
-              <T value={row.projectTitle} onChange={(v) => upd(i, 'projectTitle', v)} placeholder="Project/Program title" rows={2} />
-            </F>
-            <F label="HGDG Score">
-              <N value={row.hgdgScore} onChange={(v) => upd(i, 'hgdgScore', v)} />
-            </F>
-            <F label="Total Annual Budget (₱)">
-              <N value={row.totalBudget} onChange={(v) => upd(i, 'totalBudget', v)} />
-            </F>
-            <F label="GAD Attributed Budget (₱)">
-              <N value={row.gadAttributedBudget} onChange={(v) => upd(i, 'gadAttributedBudget', v)} />
-            </F>
-            {showOffice && (
-              <F label="Lead/Responsible Office">
-                <Input value={row.responsibleOffice} onChange={(e) => upd(i, 'responsibleOffice', e.target.value)}
-                  placeholder="Office name" className="text-[12px]" />
-              </F>
-            )}
-            {!showOffice && (
-              <F label="Variance or Remarks">
-                <Input value={row.varianceRemarks} onChange={(e) => upd(i, 'varianceRemarks', e.target.value)}
-                  placeholder="Variance or remarks" className="text-[12px]" />
-              </F>
-            )}
-          </div>
-          {rows.length > 1 && <DelBtn onClick={() => remove(i)} />}
-        </div>
-      ))}
-      <button type="button" onClick={add}
-        className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-[#D4D4D8] px-3 py-2 text-[12px] text-[#71717A] transition-colors hover:border-[#18181B] hover:text-[#18181B]"
-      >
-        <PlusIcon className="size-3.5" /> Add Attributed Program
-      </button>
     </div>
   );
 }
@@ -254,26 +163,32 @@ type FormProps<T> = {
   initialData?: T;
   editId?: string;
   isDraftEdit?: boolean;
+  /** Encoder editing a submission still waiting for review — it stays PENDING. */
+  isPendingEdit?: boolean;
 };
 
 
 function FormShell({
   title, onBack, onGenerate, onSubmitApproval, isEncoder, submitting, children,
-  editId, onSaveEdit, onSaveDraft, isDraftEdit, onValidate,
+  editId, onSaveEdit, onSaveDraft, isDraftEdit, isPendingEdit, onValidate, autosave,
 }: {
   title: string; template: TemplateDef; onBack: () => void;
   onGenerate: () => void; onSubmitApproval?: () => void;
   isEncoder?: boolean; submitting: boolean; children: React.ReactNode;
   editId?: string; onSaveEdit?: () => void;
-  onSaveDraft?: () => void; isDraftEdit?: boolean;
+  onSaveDraft?: () => void; isDraftEdit?: boolean; isPendingEdit?: boolean;
   onValidate?: () => string | null;
+  autosave?: AutosaveControls;
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const isEdit = !!editId;
 
   // Primary action label/handler by mode.
   const subtitle = isDraftEdit
     ? 'Continue editing your draft, then save or submit for admin approval.'
+    : isPendingEdit && isEncoder
+      ? 'Still waiting for review — fix anything you need and save. It stays in the review queue.'
     : isEdit
       ? (isEncoder ? 'Correct the returned form, then save and resubmit for review.' : 'Edit the submitted form, then save your changes.')
       : (isEncoder ? 'Fill all required fields then submit for admin approval.' : 'Fill all required fields then generate your Excel file.');
@@ -309,7 +224,7 @@ function FormShell({
       return (
         <Button onClick={onClick} disabled={submitting} {...sz}>
           <SendIcon className={top ? 'mr-1.5 size-4' : 'mr-2 size-4'} />
-          {submitting ? 'Saving...' : isEncoder ? 'Save & Resubmit' : 'Save Changes'}
+          {submitting ? 'Saving...' : isEncoder && !isPendingEdit ? 'Save & Resubmit' : 'Save Changes'}
         </Button>
       );
     }
@@ -353,13 +268,35 @@ function FormShell({
         </Button>
         <div>
           <h2 className="text-[15px] font-semibold text-[#09090B]">{title}</h2>
-          <p className="text-[12px] text-[#71717A]">{subtitle}</p>
+          <p className="text-[12px] text-[#71717A]">
+            {subtitle}
+            {autosave && (
+              <span className="ml-2 inline-flex items-center gap-1 text-[11px] text-emerald-700" title="Your typing is kept in this browser until you save or submit.">
+                <CheckCircle2Icon className="size-3" /> Auto-saved on this device
+              </span>
+            )}
+          </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
           {saveDraftBtn(true)}
           {primary(true)}
         </div>
       </div>
+
+      {autosave?.restoredAt && (
+        <div className="flex flex-wrap items-center gap-3 rounded-[10px] border border-amber-200 bg-amber-50 px-4 py-3">
+          <HistoryIcon className="size-4 shrink-0 text-amber-700" />
+          <p className="min-w-0 flex-1 text-[12px] text-amber-900">
+            <span className="font-semibold">Restored your unsaved work</span> from{' '}
+            {new Date(autosave.restoredAt).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })}.
+            It stays here until you save or submit.
+          </p>
+          <Button size="sm" variant="outline" className="h-7 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+            onClick={() => setConfirmDiscard(true)}>
+            Discard and start over
+          </Button>
+        </div>
+      )}
 
       {children}
 
@@ -369,6 +306,27 @@ function FormShell({
         {primary(false)}
       </div>
 
+      {/* ── Discard restored work ── */}
+      <Dialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-[15px]">Discard your unsaved work?</DialogTitle>
+            <DialogDescription className="text-[13px]">
+              {editId
+                ? 'The form goes back to the last version saved on the server.'
+                : 'The form will be cleared. This can’t be undone.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-2 gap-2">
+            <Button variant="outline" onClick={() => setConfirmDiscard(false)}>Keep it</Button>
+            <Button className="bg-red-600 hover:bg-red-700"
+              onClick={() => { autosave?.discard(); setConfirmDiscard(false); }}>
+              Discard
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* ── Confirmation Dialog (encoder submit / resubmit) ── */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <DialogContent className="max-w-sm">
@@ -377,11 +335,13 @@ function FormShell({
               <AlertCircleIcon className="size-6 text-amber-500" />
             </div>
             <DialogTitle className="text-center text-[15px]">
-              {isDraftEdit || !isEdit ? 'Submit for Approval?' : 'Save and Resubmit?'}
+              {isDraftEdit || !isEdit ? 'Submit for Approval?' : isPendingEdit ? 'Save your changes?' : 'Save and Resubmit?'}
             </DialogTitle>
             <DialogDescription className="text-center text-[13px]">
               {isDraftEdit
                 ? 'Your draft will be submitted to the admin for review. Make sure all fields are filled in correctly before proceeding.'
+                : isPendingEdit
+                  ? 'Your changes replace the version waiting for review. It keeps its place in the review queue.'
                 : isEdit
                   ? 'Your corrected form will be sent back to the admin for review. Make sure all fields are correct before proceeding.'
                   : 'Once submitted, your form will be sent to the admin for review. Make sure all fields are filled in correctly before proceeding.'}
@@ -401,7 +361,7 @@ function FormShell({
               disabled={submitting}
             >
               <SendIcon className="mr-2 size-4" />
-              {isDraftEdit || !isEdit ? 'Yes, Submit' : 'Yes, Resubmit'}
+              {isDraftEdit || !isEdit ? 'Yes, Submit' : isPendingEdit ? 'Yes, Save' : 'Yes, Resubmit'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -410,20 +370,144 @@ function FormShell({
   );
 }
 
+// ─── Shared sheet pieces ──────────────────────────────────────────────────
+
+const money = (n: number) =>
+  `₱${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/** One-line hint above every form sheet. */
+function SheetHint({ children }: { children?: React.ReactNode }) {
+  return (
+    <div className="mb-2 flex items-center gap-1.5 text-[11px] text-[#71717A]">
+      <InfoIcon className="size-3.5 shrink-0" />
+      <span>
+        {children ?? 'Matches the Excel template column for column. Scroll sideways — or use “More columns” — to see every column. Totals are computed for you.'}
+      </span>
+    </div>
+  );
+}
+
+/** ATTRIBUTED PROGRAMS band, shared by all four forms. */
+function AttributedSheet({
+  rows, onChange, cols, lastKey, subLabel = 'Sub Total C', after,
+}: {
+  rows: AttributedRow[];
+  onChange: (rows: AttributedRow[]) => void;
+  /** Five columns: title, score, total budget, GAD-attributed budget, last. */
+  cols: SheetColumn[];
+  lastKey: 'varianceRemarks' | 'responsibleOffice';
+  subLabel?: string;
+  /** Extra rows under the sub-total, e.g. the grand total. */
+  after?: React.ReactNode;
+}) {
+  function upd<K extends keyof AttributedRow>(i: number, k: K, v: AttributedRow[K]) {
+    onChange(rows.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
+  }
+  const tot = rows.reduce(
+    (a, r) => ({ total: a.total + r.totalBudget, gad: a.gad + r.gadAttributedBudget }),
+    { total: 0, gad: 0 },
+  );
+  return (
+    <FlaggedSection section="attributedPrograms">
+      <SheetGrid>
+        <SheetBanner cols={cols} accent>Attributed Programs</SheetBanner>
+        <SheetHead cols={cols} />
+        {rows.map((row, i) => (
+          <FlaggedRow key={i} section="attributedPrograms" row={i + 1}>
+            <SheetRow index={i} cols={cols}
+              onRemove={rows.length > 1 ? () => onChange(rows.filter((_, idx) => idx !== i)) : undefined}>
+              <SheetCell col={cols[0]} cols={cols} index={0} value={row.projectTitle}
+                placeholder="Program / project title" onChange={(v) => upd(i, 'projectTitle', v)} />
+              <SheetNumCell col={cols[1]} cols={cols} index={1} value={row.hgdgScore} onChange={(v) => upd(i, 'hgdgScore', v)} />
+              <SheetNumCell col={cols[2]} cols={cols} index={2} value={row.totalBudget} onChange={(v) => upd(i, 'totalBudget', v)} />
+              <SheetNumCell col={cols[3]} cols={cols} index={3} value={row.gadAttributedBudget} onChange={(v) => upd(i, 'gadAttributedBudget', v)} />
+              <SheetCell col={cols[4]} cols={cols} index={4} value={row[lastKey] ?? ''}
+                placeholder={lastKey === 'responsibleOffice' ? 'Office name' : 'Variance or remarks'}
+                onChange={(v) => upd(i, lastKey, v)} />
+            </SheetRow>
+          </FlaggedRow>
+        ))}
+        <SheetAddRow cols={cols} label="Add Attributed Program" onClick={() => onChange([...rows, blankAttrRow()])} />
+        <SheetTotalRow label={subLabel} cols={cols} values={{ 2: money(tot.total), 3: money(tot.gad) }} />
+        {after}
+      </SheetGrid>
+    </FlaggedSection>
+  );
+}
+
+// ─── Column layouts (order and numbering as printed on each template) ─────
+
+// Barangay GPB prints (1), (4), (5)… — it has no objective / program columns.
+const BRGY_GPB_COLS: SheetColumn[] = [
+  { label: 'Gender Issue or GAD Mandate', num: 1, width: 280, required: true, sticky: true },
+  { label: 'GAD Activity / PPA',          num: 4, width: 250, required: true },
+  { label: 'Performance Indicator & Target', num: 5, width: 230 },
+  { label: 'MOOE', num: 6, width: 130, align: 'right', group: 'GAD Budget' },
+  { label: 'PS',   num: 7, width: 130, align: 'right', group: 'GAD Budget' },
+  { label: 'CO',   num: 8, width: 130, align: 'right', group: 'GAD Budget' },
+  { label: 'Responsible Office', num: 9, width: 200 },
+];
+const BRGY_GPB_ATTR_COLS: SheetColumn[] = [
+  { label: 'Title of Project / Program', width: 300, sticky: true },
+  { label: 'HGDG Score', width: 130, align: 'right' },
+  { label: 'Total Annual Budget', width: 180, align: 'right' },
+  { label: 'GAD Attributed Budget', width: 180, align: 'right' },
+  { label: 'Variance or Remarks', width: 240 },
+];
+
+const BRGY_AR_COLS: SheetColumn[] = [
+  { label: 'Gender Issue or GAD Mandate', num: 1, width: 250, required: true, sticky: true },
+  { label: 'GAD Program / Project / Activity (PPA)', num: 2, width: 230 },
+  { label: 'Performance Target and Indicator', num: 3, width: 220 },
+  { label: 'Accomplishments', num: 4, width: 240 },
+  { label: 'Approved GAD Budget', num: 5, width: 150, align: 'right' },
+  { label: 'Actual GAD Cost or Expenditure', num: 6, width: 150, align: 'right' },
+  { label: 'Variance or Remarks · with proof', num: 7, width: 260 },
+];
+const BRGY_AR_ATTR_COLS: SheetColumn[] = [
+  { label: 'Title of Barangay Project', num: 8, width: 300, sticky: true },
+  { label: 'HGDG PIMME / FIMME Score', num: 9, width: 150, align: 'right' },
+  { label: 'Total Annual Program / Project Cost or Expenditure', num: 10, width: 200, align: 'right' },
+  { label: 'GAD Attributed Project / Program Cost or Expenditure', num: 11, width: 200, align: 'right' },
+  { label: 'Variance or Remarks', num: 12, width: 240 },
+];
+
+const CITY_GPB_COLS: SheetColumn[] = [
+  { label: 'Gender Issue or GAD Mandate', num: 1, width: 250, required: true, sticky: true },
+  { label: 'GAD Objective', num: 2, width: 180 },
+  { label: 'Relevant LGU Program / Project', num: 3, width: 180 },
+  { label: 'GAD Activity', num: 4, width: 190, required: true },
+  { label: 'Performance Indicator & Target', num: 5, width: 200 },
+  { label: 'MOOE', num: 6, width: 130, align: 'right', group: 'GAD Budget' },
+  { label: 'PS',   num: 7, width: 130, align: 'right', group: 'GAD Budget' },
+  { label: 'CO',   num: 8, width: 130, align: 'right', group: 'GAD Budget' },
+  { label: 'Lead or Responsible Office', num: 9, width: 180 },
+];
+const CITY_GPB_ATTR_COLS: SheetColumn[] = [
+  { label: 'Title of LGU Program or Project', num: 10, width: 300, sticky: true },
+  { label: 'Funding Facility / Generic Checklist Score', num: 11, width: 180, align: 'right' },
+  { label: 'Total Annual Program / Project Budget', num: 12, width: 200, align: 'right' },
+  { label: 'GAD Attributed Program / Project Budget', num: 13, width: 200, align: 'right' },
+  { label: 'Lead or Responsible Office', num: 14, width: 190 },
+];
+
 // ─── Barangay GPB Form ────────────────────────────────────────────────────
 
-export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit }: FormProps<BrgyGPBFormData>) {
+export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit, isPendingEdit }: FormProps<BrgyGPBFormData>) {
   const cy = new Date().getFullYear();
-  const [d, setD] = useState<BrgyGPBFormData>(initialData ?? {
+  const { user } = useAuth();
+  const [d, setD, autosave] = useAutosavedState<BrgyGPBFormData>(
+    { templateId: template.id, userId: user?.id, editId, base: initialData },
+    () => withFixedLocation(initialData ?? {
     region: '', province: '', cityMunicipality: '', barangay: '',
     cy, totalBrgyBudget: 0, totalGadBudget: 0,
     clientFocused: [blankBrgyGPBRow()],
     organizationFocused: [blankBrgyGPBRow()],
     attributedPrograms: [blankAttrRow()],
     preparedBy: '', approvedBy: '',
-  });
+  }, user?.barangay),
+  );
   const [busy, setBusy] = useState(false);
-  const { user } = useAuth();
   const submitMutation = useSubmitForApproval();
   const updateMutation = useUpdateSubmission();
   const draftMutation = useSaveDraft();
@@ -439,6 +523,7 @@ export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit
         await draftMutation.mutateAsync({ templateId: template.id, formData: d });
         toast.success('Draft saved! You can find it in My Submissions.');
       }
+      autosave.clear();
       onBack();
     } catch { toast.error('Failed to save draft. Try again.'); }
     finally { setBusy(false); }
@@ -452,9 +537,10 @@ export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit
     try {
       setBusy(true);
       await updateMutation.mutateAsync({ id: editId!, formData: d, resubmit: isEncoder });
-      toast.success(isDraftEdit ? 'Form submitted for approval!' : isEncoder ? 'Form resubmitted for review!' : 'Changes saved.');
+      toast.success(isDraftEdit ? 'Form submitted for approval!' : isPendingEdit ? 'Changes saved — still waiting for review.' : isEncoder ? 'Form resubmitted for review!' : 'Changes saved.');
+      autosave.clear();
       onBack();
-    } catch { toast.error('Failed to save. Try again.'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Failed to save. Try again.')); }
     finally { setBusy(false); }
   }
 
@@ -488,7 +574,7 @@ export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit
     if (hasBlankIssue) return 'All rows must have a Gender Issue or GAD Mandate filled in.';
     const hasBlankActivity = allRows.some((r) => !r.activity.trim());
     if (hasBlankActivity) return 'All rows must have a GAD Activity/PPA filled in.';
-    return null;
+    return validateGadShare(d.totalBrgyBudget, d.totalGadBudget, 'Barangay');
   }
 
   async function generate() {
@@ -507,143 +593,128 @@ export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit
       setBusy(true);
       await submitMutation.mutateAsync({ templateId: template.id, formData: d });
       toast.success('Form submitted for approval! You can track it in My Submissions.');
+      autosave.clear();
       onBack();
     } catch { toast.error('Failed to submit. Try again.'); }
     finally { setBusy(false); }
   }
 
-  function GPBRows({ section }: { section: 'clientFocused' | 'organizationFocused' }) {
-    const rows = d[section];
+  const gpbSum = (rows: BrgyGPBRow[]) => rows.reduce(
+    (a, r) => ({ mooe: a.mooe + r.mooe, ps: a.ps + r.ps, co: a.co + r.co }),
+    { mooe: 0, ps: 0, co: 0 },
+  );
+  const gpbA = gpbSum(d.clientFocused);
+  const gpbB = gpbSum(d.organizationFocused);
+
+  // Called as {GPBSection(...)} — NOT <GPBSection/>: a component declared inside
+  // the form is a new type every render, so React would remount the rows on
+  // each keystroke and the input would lose focus after one character.
+  function GPBSection(sec: 'clientFocused' | 'organizationFocused', banner: string, subLabel: string) {
+    const rows = d[sec];
+    const cols = BRGY_GPB_COLS;
+    const t = sec === 'clientFocused' ? gpbA : gpbB;
     return (
-      <>
+      <FlaggedSection section={sec}>
+        <SheetBanner cols={cols}>{banner}</SheetBanner>
         {rows.map((row, i) => (
-          <div key={i} className="flex items-start gap-2 rounded-md border border-[#EBEBEB] bg-[#FAFAFA] p-3">
-            <span className="mt-1 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#18181B] text-[10px] font-bold text-white">
-              {i + 1}
-            </span>
-            <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-3">
-              <F label="Gender Issue or GAD Mandate (1)" required>
-                <T value={row.gadIssue} onChange={(v) => updRow(section, i, 'gadIssue', v)}
-                  placeholder="e.g. RA 9710 Magna Carta of Women..." />
-              </F>
-              <F label="GAD Activity / PPA (4)" required>
-                <T value={row.activity} onChange={(v) => updRow(section, i, 'activity', v)}
-                  placeholder="e.g. Conduct Women's Leadership Training" />
-              </F>
-              <F label="Performance Indicator & Target (5)">
-                <T value={row.indicator} onChange={(v) => updRow(section, i, 'indicator', v)}
-                  placeholder="e.g. 100% of target women trained" />
-              </F>
-              <F label="MOOE (₱) (6)">
-                <N value={row.mooe} onChange={(v) => updRow(section, i, 'mooe', v)} />
-              </F>
-              <F label="PS (₱) (7)">
-                <N value={row.ps} onChange={(v) => updRow(section, i, 'ps', v)} />
-              </F>
-              <F label="CO (₱) (8)">
-                <N value={row.co} onChange={(v) => updRow(section, i, 'co', v)} />
-              </F>
-              <F label="Responsible Office (9)">
-                <Input value={row.responsibleOffice}
-                  onChange={(e) => updRow(section, i, 'responsibleOffice', e.target.value)}
-                  placeholder="e.g. GAD Focal Point System"
-                  className="text-[12px]" />
-              </F>
-              <div className="col-span-full text-[11px] text-[#A1A1AA]">
-                Total: ₱{(row.mooe + row.ps + row.co).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-              </div>
-            </div>
-            {rows.length > 1 && <DelBtn onClick={() => remRow(section, i)} />}
-          </div>
+          <FlaggedRow key={i} section={sec} row={i + 1}>
+            <SheetRow index={i} cols={cols} onRemove={rows.length > 1 ? () => remRow(sec, i) : undefined}>
+              <SheetCell col={cols[0]} cols={cols} index={0} value={row.gadIssue}
+                placeholder="e.g. RA 9710 Magna Carta of Women…" onChange={(v) => updRow(sec, i, 'gadIssue', v)} />
+              <SheetCell col={cols[1]} cols={cols} index={1} value={row.activity}
+                placeholder="e.g. Conduct Women’s Leadership Training" onChange={(v) => updRow(sec, i, 'activity', v)} />
+              <SheetCell col={cols[2]} cols={cols} index={2} value={row.indicator}
+                placeholder="e.g. 100% of target women trained" onChange={(v) => updRow(sec, i, 'indicator', v)} />
+              <SheetNumCell col={cols[3]} cols={cols} index={3} value={row.mooe} onChange={(v) => updRow(sec, i, 'mooe', v)} />
+              <SheetNumCell col={cols[4]} cols={cols} index={4} value={row.ps} onChange={(v) => updRow(sec, i, 'ps', v)} />
+              <SheetNumCell col={cols[5]} cols={cols} index={5} value={row.co} onChange={(v) => updRow(sec, i, 'co', v)} />
+              <SheetCell col={cols[6]} cols={cols} index={6} value={row.responsibleOffice}
+                placeholder="e.g. GAD Focal Point System" onChange={(v) => updRow(sec, i, 'responsibleOffice', v)} />
+            </SheetRow>
+          </FlaggedRow>
         ))}
-        <button type="button" onClick={() => addRow(section)}
-          className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-[#D4D4D8] px-3 py-2 text-[12px] text-[#71717A] transition-colors hover:border-[#18181B] hover:text-[#18181B]"
-        >
-          <PlusIcon className="size-3.5" /> Add Row
-        </button>
-      </>
+        <SheetAddRow cols={cols} onClick={() => addRow(sec)} />
+        <SheetTotalRow label={subLabel} cols={cols} values={{ 3: money(t.mooe), 4: money(t.ps), 5: money(t.co) }} />
+      </FlaggedSection>
     );
   }
 
   return (
-    <FormShell title="Barangay Annual GAD Plan and Budget (GPB)" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} onValidate={isEncoder ? validate : undefined}>
+    <FormShell title="Barangay Annual GAD Plan and Budget (GPB)" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
       {/* Header */}
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Header Information</p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <F label="Barangay" required>
-            <Input value={d.barangay} onChange={(e) => upd('barangay', e.target.value)}
-              placeholder="e.g. Barangay Poblacion" className="text-[12px]" />
-          </F>
-          <F label="City / Municipality">
-            <Input value={d.cityMunicipality} onChange={(e) => upd('cityMunicipality', e.target.value)}
-              placeholder="e.g. Tanauan City" className="text-[12px]" />
-          </F>
-          <F label="Province">
-            <Input value={d.province} onChange={(e) => upd('province', e.target.value)}
-              placeholder="e.g. Batangas" className="text-[12px]" />
-          </F>
-          <F label="Region">
-            <Input value={d.region} onChange={(e) => upd('region', e.target.value)}
-              placeholder="e.g. IV-A (CALABARZON)" className="text-[12px]" />
-          </F>
-          <F label="Calendar Year (CY)" required>
-            <Input type="number" value={d.cy} onChange={(e) => upd('cy', Number(e.target.value))}
-              className="text-[12px]" />
-          </F>
-          <F label="Total Barangay Budget (₱)">
-            <N value={d.totalBrgyBudget} onChange={(v) => upd('totalBrgyBudget', v)} />
-          </F>
-          <F label="Total GAD Budget (₱)">
-            <N value={d.totalGadBudget} onChange={(v) => upd('totalGadBudget', v)} />
-          </F>
+      <FlaggedSection section="header">
+        <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
+          <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Header Information</p>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+            <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-3">
+              <BarangayField value={d.barangay} onChange={(v) => upd('barangay', v)} locked={!!user?.barangay} />
+              <LockedField label="City / Municipality" value={d.cityMunicipality} />
+              <LockedField label="Province" value={d.province} />
+              <LockedField label="Region" value={d.region} />
+              <F label="Calendar Year (CY)" required>
+                <Input type="number" value={d.cy} onChange={(e) => upd('cy', Number(e.target.value))}
+                  className="text-[12px]" />
+              </F>
+              <F label="Total Barangay Budget (₱)">
+                <N value={d.totalBrgyBudget} onChange={(v) => upd('totalBrgyBudget', v)} />
+              </F>
+              <F label="Total GAD Budget (₱)">
+                <N value={d.totalGadBudget} onChange={(v) => upd('totalGadBudget', v)} />
+              </F>
+            </div>
+            <div className="lg:w-64 lg:shrink-0">
+              <GadBudgetShare totalBudget={d.totalBrgyBudget} gadBudget={d.totalGadBudget} budgetLabel="Barangay" />
+            </div>
+          </div>
         </div>
+      </FlaggedSection>
+
+      <div>
+        <SheetHint />
+        <SheetGrid>
+          <SheetHead cols={BRGY_GPB_COLS} />
+          {GPBSection('clientFocused', 'Client-Focused', 'Sub Total A')}
+          {GPBSection('organizationFocused', 'Organization Focused', 'Sub Total B')}
+          <SheetTotalRow label="Grand Total (A+B)" cols={BRGY_GPB_COLS} accent
+            values={{ 3: money(gpbA.mooe + gpbB.mooe), 4: money(gpbA.ps + gpbB.ps), 5: money(gpbA.co + gpbB.co) }} />
+        </SheetGrid>
       </div>
 
-      {/* CLIENT-FOCUSED */}
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-1 text-[12px] font-bold uppercase tracking-wider text-white bg-[#18181B] rounded px-2 py-1 inline-block">CLIENT-FOCUSED</p>
-        <p className="mb-3 text-[11px] text-[#71717A]">PPAs directly benefiting women/men clients</p>
-        <div className="space-y-2"><GPBRows section="clientFocused" /></div>
-      </div>
-
-      {/* ORGANIZATION FOCUSED */}
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-1 text-[12px] font-bold uppercase tracking-wider text-white bg-[#18181B] rounded px-2 py-1 inline-block">ORGANIZATION FOCUSED</p>
-        <p className="mb-3 text-[11px] text-[#71717A]">PPAs strengthening GAD mandate within the organization</p>
-        <div className="space-y-2"><GPBRows section="organizationFocused" /></div>
-      </div>
-
-      {/* ATTRIBUTED PROGRAMS */}
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-1 text-[12px] font-bold uppercase tracking-wider text-white bg-[#18181B] rounded px-2 py-1 inline-block">ATTRIBUTED PROGRAMS</p>
-        <p className="mb-3 text-[11px] text-[#71717A]">Programs with GAD components scored via HGDG</p>
-        <AttributedSection rows={d.attributedPrograms} onChange={(v) => upd('attributedPrograms', v)} showOffice={false} />
-      </div>
+      <AttributedSheet
+        rows={d.attributedPrograms}
+        onChange={(v) => upd('attributedPrograms', v)}
+        cols={BRGY_GPB_ATTR_COLS}
+        lastKey="varianceRemarks"
+      />
 
       {/* Signatories */}
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
-        <div className="grid grid-cols-2 gap-3">
-          <F label="Prepared by (Barangay GAD Focal)">
-            <Input value={d.preparedBy} onChange={(e) => upd('preparedBy', e.target.value)}
-              placeholder="Full name and position" className="text-[12px]" />
-          </F>
-          <F label="Approved by (Punong Barangay)">
-            <Input value={d.approvedBy} onChange={(e) => upd('approvedBy', e.target.value)}
-              placeholder="Full name" className="text-[12px]" />
-          </F>
+      <FlaggedSection section="signatories">
+        <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
+          <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
+          <div className="grid grid-cols-2 gap-3">
+            <F label="Prepared by (Barangay GAD Focal)">
+              <Input value={d.preparedBy} onChange={(e) => upd('preparedBy', e.target.value)}
+                placeholder="Full name and position" className="text-[12px]" />
+            </F>
+            <F label="Approved by (Punong Barangay)">
+              <Input value={d.approvedBy} onChange={(e) => upd('approvedBy', e.target.value)}
+                placeholder="Full name" className="text-[12px]" />
+            </F>
+          </div>
         </div>
-      </div>
+      </FlaggedSection>
     </FormShell>
   );
 }
 
 // ─── Barangay AR Form ─────────────────────────────────────────────────────
 
-export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit }: FormProps<BrgyARFormData>) {
+export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit, isPendingEdit }: FormProps<BrgyARFormData>) {
   const fy = new Date().getFullYear();
-  const [d, setD] = useState<BrgyARFormData>(initialData ?? {
+  const { user } = useAuth();
+  const [d, setD, autosave] = useAutosavedState<BrgyARFormData>(
+    { templateId: template.id, userId: user?.id, editId, base: initialData },
+    () => withFixedLocation(initialData ?? {
     region: '', province: '', cityMunicipality: '', barangay: '',
     fy, totalBrgyBudget: 0, totalGadBudget: 0,
     clientFocusedGenderIssues: [blankBrgyARRow()],
@@ -652,9 +723,9 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit 
     organizationGadMandate: [blankBrgyARRow()],
     attributedPrograms: [blankAttrRow()],
     preparedBy: '', approvedBy: '', date: '',
-  });
+  }, user?.barangay),
+  );
   const [busy, setBusy] = useState(false);
-  const { user } = useAuth();
   const submitMutation = useSubmitForApproval();
   const updateMutation = useUpdateSubmission();
   const draftMutation = useSaveDraft();
@@ -670,6 +741,7 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit 
         await draftMutation.mutateAsync({ templateId: template.id, formData: d });
         toast.success('Draft saved! You can find it in My Submissions.');
       }
+      autosave.clear();
       onBack();
     } catch { toast.error('Failed to save draft. Try again.'); }
     finally { setBusy(false); }
@@ -681,7 +753,7 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit 
     const allRows = [...d.clientFocusedGenderIssues, ...d.clientFocusedGadMandate, ...d.organizationGenderIssues, ...d.organizationGadMandate];
     if (allRows.some((r) => !r.gadIssue.trim()))
       return 'All rows must have a Gender Issue or GAD Mandate filled in.';
-    return null;
+    return validateGadShare(d.totalBrgyBudget, d.totalGadBudget, 'Barangay');
   }
 
   async function saveEdit() {
@@ -692,9 +764,10 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit 
     try {
       setBusy(true);
       await updateMutation.mutateAsync({ id: editId!, formData: d, resubmit: isEncoder });
-      toast.success(isDraftEdit ? 'Form submitted for approval!' : isEncoder ? 'Form resubmitted for review!' : 'Changes saved.');
+      toast.success(isDraftEdit ? 'Form submitted for approval!' : isPendingEdit ? 'Changes saved — still waiting for review.' : isEncoder ? 'Form resubmitted for review!' : 'Changes saved.');
+      autosave.clear();
       onBack();
-    } catch { toast.error('Failed to save. Try again.'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Failed to save. Try again.')); }
     finally { setBusy(false); }
   }
 
@@ -705,6 +778,13 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit 
   }
   function addRow(sec: ARSection) { setD((p) => ({ ...p, [sec]: [...p[sec], blankBrgyARRow()] })); }
   function remRow(sec: ARSection, i: number) { setD((p) => ({ ...p, [sec]: p[sec].filter((_, idx) => idx !== i) })); }
+
+  const importFromGpb = useCallback((gpb: FormSubmission, auto: boolean) => {
+    setD((p) => importBrgyGpb(p, gpb.formData as BrgyGPBFormData, gpb.id));
+    toast.success(auto
+      ? `Auto-filled from your plan "${gpb.title}".`
+      : `Copied the planned activities from "${gpb.title}".`);
+  }, [setD]);
 
   async function generate() {
     const err = validate();
@@ -719,18 +799,11 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit 
       setBusy(true);
       await submitMutation.mutateAsync({ templateId: template.id, formData: d });
       toast.success('Form submitted for approval! You can track it in My Submissions.');
+      autosave.clear();
       onBack();
     } catch { toast.error('Failed to submit. Try again.'); }
     finally { setBusy(false); }
   }
-
-  // ── Column layout constants ──
-  const COL = 'grid-cols-[220px_240px_240px_240px_150px_150px_196px_48px]';
-  // Sub-total spans cols 1-4 merged, then cols 5, 6, 7+action
-  const SUBTOTAL_COL = 'grid-cols-[940px_150px_150px_244px]';
-  // Attributed Programs: cols 8-12 + action
-  const ATTR_COL = 'grid-cols-[280px_140px_200px_200px_188px_48px]';
-  const ATTR_SUBTOTAL_COL = 'grid-cols-[280px_140px_200px_200px_236px]';
 
   // ── Live totals ──
   const st = (rows: BrgyARRow[]) => rows.reduce(
@@ -747,345 +820,178 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit 
     (a, r) => ({ tot: a.tot + r.totalBudget, attr: a.attr + r.gadAttributedBudget }),
     { tot: 0, attr: 0 }
   );
-  const fmt = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2 });
 
-  // ── Data rows for a given section ──
-  function DataRows({ sec }: { sec: ARSection }) {
+  const AR_SECTION: Record<ARSection, string> = {
+    clientFocusedGenderIssues: 'clientFocused',
+    clientFocusedGadMandate:   'clientFocused',
+    organizationGenderIssues:  'organizationFocused',
+    organizationGadMandate:    'organizationFocused',
+  };
+  const arRowOffset = (sec: ARSection) =>
+    sec === 'clientFocusedGadMandate' ? d.clientFocusedGenderIssues.length
+      : sec === 'organizationGadMandate' ? d.organizationGenderIssues.length
+        : 0;
+
+  // One band of rows (e.g. CLIENT-FOCUSED › 1. Gender Issues). Called as a
+  // function, not <Component/>, so rows aren't remounted on every keystroke.
+  function ARBand(sec: ARSection) {
     const rows = d[sec];
+    const cols = BRGY_AR_COLS;
+    const off = arRowOffset(sec);
     return (
       <>
-        {rows.map((row, i) => (
-          <div key={i} className={`grid ${COL} border-b border-[#E4E4E7] bg-white`}>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <T value={row.gadIssue} onChange={(v) => updRow(sec, i, 'gadIssue', v)} placeholder="Gender issue or GAD mandate" rows={4} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <T value={row.ppa} onChange={(v) => updRow(sec, i, 'ppa', v)} placeholder="Program / project / activity" rows={4} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <T value={row.indicator} onChange={(v) => updRow(sec, i, 'indicator', v)} placeholder="Performance target and indicator" rows={4} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <T value={row.accomplishments} onChange={(v) => updRow(sec, i, 'accomplishments', v)} placeholder="Accomplishments" rows={4} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <N value={row.approvedBudget} onChange={(v) => updRow(sec, i, 'approvedBudget', v)} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <N value={row.actualCost} onChange={(v) => updRow(sec, i, 'actualCost', v)} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <Input value={row.variance} onChange={(e) => updRow(sec, i, 'variance', e.target.value)} placeholder="Remarks" className="text-[12px]" />
-            </div>
-            <div className="flex items-start justify-center p-2">
-              {rows.length > 1 && <DelBtn onClick={() => remRow(sec, i)} />}
-            </div>
-          </div>
-        ))}
-        <div className="border-b border-dashed border-[#D4D4D8] bg-[#FAFAFA] p-2">
-          <button type="button" onClick={() => addRow(sec)}
-            className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed border-[#D4D4D8] px-3 py-1.5 text-[11px] text-[#71717A] hover:border-[#18181B] hover:text-[#18181B]"
-          >
-            <PlusIcon className="size-3" /> Add Row
-          </button>
-        </div>
+        {rows.map((row, i) => {
+          const locked = !!row.gpbRef;
+          return (
+            <FlaggedRow key={i} section={AR_SECTION[sec]} row={off + i + 1}>
+              {/* Any row may go: a band with nothing to report can be left empty. */}
+              <SheetRow index={off + i} cols={cols} onRemove={() => remRow(sec, i)}>
+                <SheetCell col={cols[0]} cols={cols} index={0} value={row.gadIssue} locked={locked}
+                  placeholder="Gender issue or GAD mandate" onChange={(v) => updRow(sec, i, 'gadIssue', v)} />
+                <SheetCell col={cols[1]} cols={cols} index={1} value={row.ppa} locked={locked}
+                  placeholder="Program / project / activity" onChange={(v) => updRow(sec, i, 'ppa', v)} />
+                <SheetCell col={cols[2]} cols={cols} index={2} value={row.indicator} locked={locked}
+                  placeholder="Performance target and indicator" onChange={(v) => updRow(sec, i, 'indicator', v)} />
+                <SheetCell col={cols[3]} cols={cols} index={3} value={row.accomplishments}
+                  placeholder="What was accomplished" onChange={(v) => updRow(sec, i, 'accomplishments', v)} />
+                {locked ? (
+                  <SheetCell col={cols[4]} cols={cols} index={4} numeric locked
+                    value={row.approvedBudget ? money(row.approvedBudget) : ''} />
+                ) : (
+                  <SheetNumCell col={cols[4]} cols={cols} index={4}
+                    value={row.approvedBudget} onChange={(v) => updRow(sec, i, 'approvedBudget', v)} />
+                )}
+                <SheetNumCell col={cols[5]} cols={cols} index={5}
+                  value={row.actualCost} onChange={(v) => updRow(sec, i, 'actualCost', v)} />
+                <SheetSlot col={cols[6]}>
+                  <EvidenceField
+                    value={row.variance}
+                    onChange={(v) => updRow(sec, i, 'variance', v)}
+                    files={row.evidence ?? []}
+                    onFilesChange={(files: EvidenceFile[]) => updRow(sec, i, 'evidence', files)}
+                  />
+                </SheetSlot>
+              </SheetRow>
+            </FlaggedRow>
+          );
+        })}
+        <SheetAddRow cols={cols} onClick={() => addRow(sec)} />
       </>
     );
   }
 
   return (
-    <FormShell title="Barangay Annual GAD Accomplishment Report (AR)" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} onValidate={isEncoder ? validate : undefined}>
+    <FormShell title="Barangay Annual GAD Accomplishment Report (AR)" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
 
       {/* ── Header Info ── */}
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        {/* Title */}
-        <div className="mb-5 text-center">
-          <p className="text-[15px] font-bold uppercase tracking-wide text-[#09090B]">
-            Barangay Annual Gender and Development (GAD) Accomplishment Report
-          </p>
-          <div className="mt-2 flex items-center justify-center gap-2 text-[13px] font-semibold text-[#09090B]">
-            <span>FY</span>
-            <Input type="number" value={d.fy} onChange={(e) => upd('fy', Number(e.target.value))}
-              className="h-7 w-24 text-center text-[12px]" />
+      <FlaggedSection section="header">
+        <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
+          {/* Title */}
+          <div className="mb-5 text-center">
+            <p className="text-[15px] font-bold uppercase tracking-wide text-[#09090B]">
+              Barangay Annual Gender and Development (GAD) Accomplishment Report
+            </p>
+            <div className="mt-2 flex items-center justify-center gap-2 text-[13px] font-semibold text-[#09090B]">
+              <span>FY</span>
+              <Input type="number" value={d.fy} onChange={(e) => upd('fy', Number(e.target.value))}
+                className="h-7 w-24 text-center text-[12px]" />
+            </div>
           </div>
-        </div>
 
-        {/* Region / Province / City / Barangay  |  Budgets */}
-        <div className="grid grid-cols-2 gap-x-10 gap-y-2.5">
-          <div className="space-y-2.5">
-            <F label="Region">
-              <Input value={d.region} onChange={(e) => upd('region', e.target.value)}
-                placeholder="e.g. IV-A (CALABARZON)" className="text-[12px]" />
-            </F>
-            <F label="Province">
-              <Input value={d.province} onChange={(e) => upd('province', e.target.value)}
-                placeholder="e.g. Batangas" className="text-[12px]" />
-            </F>
-            <F label="City / Municipality">
-              <Input value={d.cityMunicipality} onChange={(e) => upd('cityMunicipality', e.target.value)}
-                placeholder="e.g. Tanauan City" className="text-[12px]" />
-            </F>
-            <F label="Barangay" required>
-              <Input value={d.barangay} onChange={(e) => upd('barangay', e.target.value)}
-                placeholder="Barangay name" className="text-[12px]" />
-            </F>
-          </div>
-          <div className="space-y-2.5">
-            <F label="Total Barangay Budget (₱)">
-              <N value={d.totalBrgyBudget} onChange={(v) => upd('totalBrgyBudget', v)} />
-            </F>
-            <F label="Total GAD Budget (₱)">
-              <N value={d.totalGadBudget} onChange={(v) => upd('totalGadBudget', v)} />
-            </F>
+          {/* Region / Province / City / Barangay  |  Budgets */}
+          <div className="grid grid-cols-2 gap-x-10 gap-y-2.5">
+            <div className="space-y-2.5">
+              <LockedField label="Region" value={d.region} />
+              <LockedField label="Province" value={d.province} />
+              <LockedField label="City / Municipality" value={d.cityMunicipality} />
+              <BarangayField value={d.barangay} onChange={(v) => upd('barangay', v)} locked={!!user?.barangay} />
+            </div>
+            <div className="space-y-2.5">
+              <F label="Total Barangay Budget (₱)">
+                <N value={d.totalBrgyBudget} onChange={(v) => upd('totalBrgyBudget', v)} />
+              </F>
+              <F label="Total GAD Budget (₱)">
+                <N value={d.totalGadBudget} onChange={(v) => upd('totalGadBudget', v)} />
+              </F>
+              <GadBudgetShare totalBudget={d.totalBrgyBudget} gadBudget={d.totalGadBudget} budgetLabel="Barangay" />
+            </div>
           </div>
         </div>
+      </FlaggedSection>
+
+      {isEncoder && (
+        <GpbImportPanel
+          gpbTemplateId="BARANGAY_GPB"
+          sourceGpbId={d.sourceGpbId}
+          year={d.fy}
+          autoImport={!editId && !initialData}
+          lockedCols="(1), (2), (3) and (5)"
+          onImport={importFromGpb}
+        />
+      )}
+
+      <div>
+        <SheetHint />
+        <SheetGrid>
+          <SheetHead cols={BRGY_AR_COLS} />
+          <FlaggedSection section="clientFocused">
+            <SheetBanner cols={BRGY_AR_COLS}>Client-Focused</SheetBanner>
+            <SheetSubBanner cols={BRGY_AR_COLS}>1. Gender Issues</SheetSubBanner>
+            {ARBand('clientFocusedGenderIssues')}
+            <SheetSubBanner cols={BRGY_AR_COLS} tone="amber">2. GAD Mandate</SheetSubBanner>
+            {ARBand('clientFocusedGadMandate')}
+            <SheetTotalRow label="Sub-total A" cols={BRGY_AR_COLS} values={{ 4: money(subA.app), 5: money(subA.act) }} />
+          </FlaggedSection>
+          <FlaggedSection section="organizationFocused">
+            <SheetBanner cols={BRGY_AR_COLS}>Organization-Focused</SheetBanner>
+            <SheetSubBanner cols={BRGY_AR_COLS}>1. Gender Issues</SheetSubBanner>
+            {ARBand('organizationGenderIssues')}
+            <SheetSubBanner cols={BRGY_AR_COLS} tone="amber">2. GAD Mandate</SheetSubBanner>
+            {ARBand('organizationGadMandate')}
+            <SheetTotalRow label="Sub-total B" cols={BRGY_AR_COLS} values={{ 4: money(subB.app), 5: money(subB.act) }} />
+          </FlaggedSection>
+          <SheetTotalRow label="Total (A+B)" cols={BRGY_AR_COLS} accent
+            values={{ 4: money(subA.app + subB.app), 5: money(subA.act + subB.act) }} />
+        </SheetGrid>
       </div>
 
-      {/* ── Unified 7-column Table: CLIENT-FOCUSED + ORGANIZATION-FOCUSED ── */}
-      <div className="overflow-hidden rounded-[10px] border border-[#D4D4D8] bg-white">
-        <div className="overflow-x-auto">
-          <div className="min-w-[1444px]">
-
-            {/* Table Column Headers */}
-            <div className={`grid ${COL} border-b border-[#D4D4D8] bg-[#18181B] text-[11px] font-semibold text-white`}>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Gender Issue or<br />GAD Mandate<br /><span className="text-[10px] font-normal text-zinc-400">(1)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                GAD Program/Project/<br />Activity (PPA)<br /><span className="text-[10px] font-normal text-zinc-400">(2)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Performance Target<br />and Indicator<br /><span className="text-[10px] font-normal text-zinc-400">(3)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Accomplishments<br /><span className="text-[10px] font-normal text-zinc-400">(4)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Approved GAD<br />Budget<br /><span className="text-[10px] font-normal text-zinc-400">(5)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Actual GAD Cost<br />or Expenditure<br /><span className="text-[10px] font-normal text-zinc-400">(6)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Variance or Remarks<br /><span className="text-[10px] font-normal text-zinc-400">(7)</span>
-              </div>
-              <div className="px-2 py-3 text-center text-[10px]">Act.</div>
-            </div>
-
-            {/* ═══ CLIENT-FOCUSED ═══ */}
-            <div className="border-b border-[#D4D4D8] bg-[#27272A] px-4 py-2 text-[12px] font-bold uppercase tracking-widest text-white">
-              CLIENT-FOCUSED
-            </div>
-
-            {/* 1. Gender Issues — label sits in col (1), other cols empty */}
-            <div className={`grid ${COL} border-b-2 border-[#D4D4D8] bg-[#EEF2FF]`}>
-              <div className="border-r border-[#D4D4D8] px-4 py-2 text-[12px] font-bold text-[#3730A3]">
-                1.&nbsp; Gender Issues
-              </div>
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div />
-            </div>
-            {DataRows({ sec: 'clientFocusedGenderIssues' })}
-
-            {/* 2. GAD Mandate — label sits in col (1), other cols empty */}
-            <div className={`grid ${COL} border-b-2 border-[#D4D4D8] bg-[#FFF7ED]`}>
-              <div className="border-r border-[#D4D4D8] px-4 py-2 text-[12px] font-bold text-[#92400E]">
-                2.&nbsp; GAD Mandate
-              </div>
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div />
-            </div>
-            {DataRows({ sec: 'clientFocusedGadMandate' })}
-
-            {/* Sub-total A */}
-            <div className={`grid ${SUBTOTAL_COL} border-b-2 border-[#27272A] bg-[#F4F4F5]`}>
-              <div className="border-r border-[#D4D4D8] px-4 py-2 text-[12px] font-bold text-[#09090B]">Sub-total A</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(subA.app)}</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(subA.act)}</div>
-              <div className="px-3 py-2" />
-            </div>
-
-            {/* ═══ ORGANIZATION-FOCUSED ═══ */}
-            <div className="border-b border-[#D4D4D8] bg-[#27272A] px-4 py-2 text-[12px] font-bold uppercase tracking-widest text-white">
-              ORGANIZATION-FOCUSED
-            </div>
-
-            {/* 1. Gender Issues — label sits in col (1), other cols empty */}
-            <div className={`grid ${COL} border-b-2 border-[#D4D4D8] bg-[#EEF2FF]`}>
-              <div className="border-r border-[#D4D4D8] px-4 py-2 text-[12px] font-bold text-[#3730A3]">
-                1.&nbsp; Gender Issues
-              </div>
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div />
-            </div>
-            {DataRows({ sec: 'organizationGenderIssues' })}
-
-            {/* 2. GAD Mandate — label sits in col (1), other cols empty */}
-            <div className={`grid ${COL} border-b-2 border-[#D4D4D8] bg-[#FFF7ED]`}>
-              <div className="border-r border-[#D4D4D8] px-4 py-2 text-[12px] font-bold text-[#92400E]">
-                2.&nbsp; GAD Mandate
-              </div>
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div className="border-r border-[#D4D4D8]" />
-              <div />
-            </div>
-            {DataRows({ sec: 'organizationGadMandate' })}
-
-            {/* Sub-total B */}
-            <div className={`grid ${SUBTOTAL_COL} bg-[#F4F4F5]`}>
-              <div className="border-r border-[#D4D4D8] px-4 py-2 text-[12px] font-bold text-[#09090B]">Sub-total B</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(subB.app)}</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(subB.act)}</div>
-              <div className="px-3 py-2" />
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      {/* ── ATTRIBUTED PROGRAMS (cols 8–12) ── */}
-      <div className="overflow-hidden rounded-[10px] border border-[#D4D4D8] bg-white">
-        <div className="overflow-x-auto">
-          <div className="min-w-[1056px]">
-
-            {/* Section Banner */}
-            <div className="border-b border-[#D4D4D8] bg-[#27272A] px-4 py-2 text-[12px] font-bold uppercase tracking-widest text-white">
-              ATTRIBUTED PROGRAMS
-            </div>
-
-            {/* Column Headers */}
-            <div className={`grid ${ATTR_COL} border-b border-[#D4D4D8] bg-[#18181B] text-[11px] font-semibold text-white`}>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Title of Barangay Project<br /><span className="text-[10px] font-normal text-zinc-400">(8)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                HGDG PIMME/<br />FIMME Score<br /><span className="text-[10px] font-normal text-zinc-400">(9)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Total Annual Program/<br />Project Cost or<br />Expenditure<br /><span className="text-[10px] font-normal text-zinc-400">(10)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                GAD Attributed Project/<br />Program Cost or<br />Expenditure<br /><span className="text-[10px] font-normal text-zinc-400">(11)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Variance or Remarks<br /><span className="text-[10px] font-normal text-zinc-400">(12)</span>
-              </div>
-              <div className="px-2 py-3 text-center text-[10px]">Act.</div>
-            </div>
-
-            {/* Attributed Rows */}
-            {d.attributedPrograms.map((row, i) => (
-              <div key={i} className={`grid ${ATTR_COL} border-b border-[#E4E4E7] bg-white`}>
-                <div className="border-r border-[#E4E4E7] p-2">
-                  <T value={row.projectTitle} onChange={(v) => {
-                    upd('attributedPrograms', d.attributedPrograms.map((r, idx) => idx === i ? { ...r, projectTitle: v } : r));
-                  }} placeholder="Project/Program title" rows={3} />
-                </div>
-                <div className="border-r border-[#E4E4E7] p-2">
-                  <N value={row.hgdgScore} onChange={(v) => {
-                    upd('attributedPrograms', d.attributedPrograms.map((r, idx) => idx === i ? { ...r, hgdgScore: v } : r));
-                  }} />
-                </div>
-                <div className="border-r border-[#E4E4E7] p-2">
-                  <N value={row.totalBudget} onChange={(v) => {
-                    upd('attributedPrograms', d.attributedPrograms.map((r, idx) => idx === i ? { ...r, totalBudget: v } : r));
-                  }} />
-                </div>
-                <div className="border-r border-[#E4E4E7] p-2">
-                  <N value={row.gadAttributedBudget} onChange={(v) => {
-                    upd('attributedPrograms', d.attributedPrograms.map((r, idx) => idx === i ? { ...r, gadAttributedBudget: v } : r));
-                  }} />
-                </div>
-                <div className="border-r border-[#E4E4E7] p-2">
-                  <Input value={row.varianceRemarks} onChange={(e) => {
-                    upd('attributedPrograms', d.attributedPrograms.map((r, idx) => idx === i ? { ...r, varianceRemarks: e.target.value } : r));
-                  }} placeholder="Remarks" className="text-[12px]" />
-                </div>
-                <div className="flex items-start justify-center p-2">
-                  {d.attributedPrograms.length > 1 && (
-                    <DelBtn onClick={() => upd('attributedPrograms', d.attributedPrograms.filter((_, idx) => idx !== i))} />
-                  )}
-                </div>
-              </div>
-            ))}
-
-            {/* Sub-total C */}
-            <div className={`grid ${ATTR_SUBTOTAL_COL} border-b border-[#D4D4D8] bg-[#FAFAFA]`}>
-              <div className="border-r border-[#D4D4D8] px-4 py-2 text-[12px] font-bold text-[#09090B]">Sub-total C</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2" />
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(subC.tot)}</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(subC.attr)}</div>
-              <div className="px-3 py-2" />
-            </div>
-
-            {/* Add Row */}
-            <div className="bg-[#FAFAFA] p-2">
-              <button type="button"
-                onClick={() => upd('attributedPrograms', [...d.attributedPrograms, blankAttrRow()])}
-                className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed border-[#D4D4D8] px-3 py-2 text-[12px] text-[#71717A] hover:border-[#18181B] hover:text-[#18181B]"
-              >
-                <PlusIcon className="size-3.5" /> Add Attributed Program
-              </button>
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      {/* ── Grand Total (A+B+C) ── */}
-      <div className="overflow-hidden rounded-[10px] border border-[#D4D4D8]">
-        <div className="flex items-center justify-between bg-[#09090B] px-4 py-3 text-white">
-          <span className="text-[13px] font-bold">Grand Total (A+B+C)</span>
-          <div className="flex items-center gap-8 text-[13px] font-bold">
-            <div className="text-right">
-              <span className="mr-2 text-[11px] font-normal text-zinc-400">Approved GAD Budget:</span>
-              {fmt(subA.app + subB.app)}
-            </div>
-            <div className="text-right">
-              <span className="mr-2 text-[11px] font-normal text-zinc-400">Actual Cost + Attributed:</span>
-              {fmt(subA.act + subB.act + subC.attr)}
-            </div>
-          </div>
-        </div>
+      <div>
+        <AttributedSheet
+          rows={d.attributedPrograms}
+          onChange={(v) => upd('attributedPrograms', v)}
+          cols={BRGY_AR_ATTR_COLS}
+          lastKey="varianceRemarks"
+          after={
+            <SheetTotalRow label="Grand Total (A+B+C)" cols={BRGY_AR_ATTR_COLS} accent
+              values={{ 3: money(subA.act + subB.act + subC.attr) }} />
+          }
+        />
+        <p className="mt-2 text-[11px] text-[#71717A]">
+          Grand total = actual cost A ({money(subA.act)}) + actual cost B ({money(subB.act)}) + GAD-attributed cost C ({money(subC.attr)}).
+          Approved GAD budget (A+B): {money(subA.app + subB.app)}.
+        </p>
       </div>
 
       {/* ── Signatories ── */}
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
-        <div className="grid grid-cols-3 gap-3">
-          <F label="Prepared by (Barangay GAD Focal)">
-            <Input value={d.preparedBy} onChange={(e) => upd('preparedBy', e.target.value)}
-              placeholder="Full name" className="text-[12px]" />
-          </F>
-          <F label="Approved by (Punong Barangay)">
-            <Input value={d.approvedBy} onChange={(e) => upd('approvedBy', e.target.value)}
-              placeholder="Full name" className="text-[12px]" />
-          </F>
-          <F label="Date (DD/MM/YYYY)">
-            <Input type="date" value={d.date} onChange={(e) => upd('date', e.target.value)}
-              className="text-[12px]" />
-          </F>
+      <FlaggedSection section="signatories">
+        <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
+          <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
+          <div className="grid grid-cols-3 gap-3">
+            <F label="Prepared by (Barangay GAD Focal)">
+              <Input value={d.preparedBy} onChange={(e) => upd('preparedBy', e.target.value)}
+                placeholder="Full name" className="text-[12px]" />
+            </F>
+            <F label="Approved by (Punong Barangay)">
+              <Input value={d.approvedBy} onChange={(e) => upd('approvedBy', e.target.value)}
+                placeholder="Full name" className="text-[12px]" />
+            </F>
+            <F label="Date (DD/MM/YYYY)">
+              <Input type="date" value={d.date} onChange={(e) => upd('date', e.target.value)}
+                className="text-[12px]" />
+            </F>
+          </div>
         </div>
-      </div>
+      </FlaggedSection>
 
     </FormShell>
   );
@@ -1093,18 +999,21 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit 
 
 // ─── City GPB Form ────────────────────────────────────────────────────────
 
-export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit }: FormProps<CityGPBFormData>) {
+export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit, isPendingEdit }: FormProps<CityGPBFormData>) {
   const fy = new Date().getFullYear();
-  const [d, setD] = useState<CityGPBFormData>(initialData ?? {
+  const { user } = useAuth();
+  const [d, setD, autosave] = useAutosavedState<CityGPBFormData>(
+    { templateId: template.id, userId: user?.id, editId, base: initialData },
+    () => withFixedLocation(initialData ?? {
     region: 'IV-A', province: 'Batangas', cityMunicipality: 'Tanauan City',
     officeName: '', fy, totalLguBudget: 0, totalGadBudget: 0,
     clientFocused: [blankCityGPBRow()],
     organizationFocused: [blankCityGPBRow()],
     attributedPrograms: [blankAttrRow()],
     preparedBy: '', approvedBy: '', date: '',
-  });
+  }),
+  );
   const [busy, setBusy] = useState(false);
-  const { user } = useAuth();
   const submitMutation = useSubmitForApproval();
   const updateMutation = useUpdateSubmission();
   const draftMutation = useSaveDraft();
@@ -1120,6 +1029,7 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
         await draftMutation.mutateAsync({ templateId: template.id, formData: d });
         toast.success('Draft saved! You can find it in My Submissions.');
       }
+      autosave.clear();
       onBack();
     } catch { toast.error('Failed to save draft. Try again.'); }
     finally { setBusy(false); }
@@ -1133,7 +1043,7 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
       return 'All rows must have a Gender Issue or GAD Mandate filled in.';
     if (allRows.some((r) => !r.activity.trim()))
       return 'All rows must have a GAD Activity filled in.';
-    return null;
+    return validateGadShare(d.totalLguBudget, d.totalGadBudget, 'LGU');
   }
 
   async function saveEdit() {
@@ -1144,9 +1054,10 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
     try {
       setBusy(true);
       await updateMutation.mutateAsync({ id: editId!, formData: d, resubmit: isEncoder });
-      toast.success(isDraftEdit ? 'Form submitted for approval!' : isEncoder ? 'Form resubmitted for review!' : 'Changes saved.');
+      toast.success(isDraftEdit ? 'Form submitted for approval!' : isPendingEdit ? 'Changes saved — still waiting for review.' : isEncoder ? 'Form resubmitted for review!' : 'Changes saved.');
+      autosave.clear();
       onBack();
-    } catch { toast.error('Failed to save. Try again.'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Failed to save. Try again.')); }
     finally { setBusy(false); }
   }
 
@@ -1170,16 +1081,11 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
       setBusy(true);
       await submitMutation.mutateAsync({ templateId: template.id, formData: d });
       toast.success('Form submitted for approval! You can track it in My Submissions.');
+      autosave.clear();
       onBack();
     } catch { toast.error('Failed to submit. Try again.'); }
     finally { setBusy(false); }
   }
-
-  // ── Column layout constants ──
-  const COL = 'grid-cols-[220px_180px_180px_180px_180px_110px_110px_110px_170px_48px]';
-  const SUBTOTAL_COL = 'grid-cols-[940px_110px_110px_110px_218px]';
-  const ATTR_COL = 'grid-cols-[260px_130px_170px_170px_200px_48px]';
-  const ATTR_SUBTOTAL_COL = 'grid-cols-[260px_130px_170px_170px_248px]';
 
   // ── Live totals ──
   const sumSec = (rows: CityGPBRow[]) => rows.reduce(
@@ -1188,312 +1094,157 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
   );
   const cfSum  = sumSec(d.clientFocused);
   const ofSum  = sumSec(d.organizationFocused);
-  const attrSum = d.attributedPrograms.reduce(
-    (a, r) => ({ tot: a.tot + r.totalBudget, attr: a.attr + r.gadAttributedBudget }),
-    { tot: 0, attr: 0 },
-  );
   const grandMooe = cfSum.mooe + ofSum.mooe;
   const grandPs   = cfSum.ps   + ofSum.ps;
   const grandCo   = cfSum.co   + ofSum.co;
-  const fmt = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 2 });
 
-  function DataRows({ sec }: { sec: 'clientFocused' | 'organizationFocused' }) {
+  // Called as a function, not <Component/> — see GPBSection for why.
+  function CityGPBSection(sec: 'clientFocused' | 'organizationFocused', banner: string, subLabel: string) {
     const rows = d[sec];
+    const cols = CITY_GPB_COLS;
+    const t = sec === 'clientFocused' ? cfSum : ofSum;
+    const text = (i: number, ci: number, key: 'gadIssue' | 'gadObjective' | 'relevantProgram' | 'activity' | 'indicator' | 'responsibleOffice', placeholder: string) => (
+      <SheetCell key={key} col={cols[ci]} cols={cols} index={ci} value={rows[i][key]}
+        placeholder={placeholder} onChange={(v) => updRow(sec, i, key, v)} />
+    );
     return (
-      <>
+      <FlaggedSection section={sec}>
+        <SheetBanner cols={cols}>{banner}</SheetBanner>
         {rows.map((row, i) => (
-          <div key={i} className={`grid ${COL} border-b border-[#E4E4E7] bg-white`}>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <T value={row.gadIssue} onChange={(v) => updRow(sec, i, 'gadIssue', v)} placeholder="Gender issue or GAD mandate" rows={4} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <T value={row.gadObjective} onChange={(v) => updRow(sec, i, 'gadObjective', v)} placeholder="GAD objective" rows={4} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <T value={row.relevantProgram} onChange={(v) => updRow(sec, i, 'relevantProgram', v)} placeholder="Relevant LGU program/project" rows={4} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <T value={row.activity} onChange={(v) => updRow(sec, i, 'activity', v)} placeholder="GAD activity" rows={4} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <T value={row.indicator} onChange={(v) => updRow(sec, i, 'indicator', v)} placeholder="Performance indicator & target" rows={4} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <N value={row.mooe} onChange={(v) => updRow(sec, i, 'mooe', v)} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <N value={row.ps} onChange={(v) => updRow(sec, i, 'ps', v)} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <N value={row.co} onChange={(v) => updRow(sec, i, 'co', v)} />
-            </div>
-            <div className="border-r border-[#E4E4E7] p-2">
-              <Input value={row.responsibleOffice} onChange={(e) => updRow(sec, i, 'responsibleOffice', e.target.value)} placeholder="Office name" className="text-[12px]" />
-            </div>
-            <div className="flex items-start justify-center p-2">
-              {rows.length > 1 && <DelBtn onClick={() => remRow(sec, i)} />}
-            </div>
-          </div>
+          <FlaggedRow key={i} section={sec} row={i + 1}>
+            <SheetRow index={i} cols={cols} onRemove={rows.length > 1 ? () => remRow(sec, i) : undefined}>
+              {text(i, 0, 'gadIssue', 'Gender issue or GAD mandate')}
+              {text(i, 1, 'gadObjective', 'GAD objective')}
+              {text(i, 2, 'relevantProgram', 'Relevant LGU program / project')}
+              {text(i, 3, 'activity', 'GAD activity')}
+              {text(i, 4, 'indicator', 'Performance indicator & target')}
+              <SheetNumCell col={cols[5]} cols={cols} index={5} value={row.mooe} onChange={(v) => updRow(sec, i, 'mooe', v)} />
+              <SheetNumCell col={cols[6]} cols={cols} index={6} value={row.ps} onChange={(v) => updRow(sec, i, 'ps', v)} />
+              <SheetNumCell col={cols[7]} cols={cols} index={7} value={row.co} onChange={(v) => updRow(sec, i, 'co', v)} />
+              {text(i, 8, 'responsibleOffice', 'Office name')}
+            </SheetRow>
+          </FlaggedRow>
         ))}
-        <div className="border-b border-dashed border-[#D4D4D8] bg-[#FAFAFA] p-2">
-          <button type="button" onClick={() => addRow(sec)}
-            className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed border-[#D4D4D8] px-3 py-1.5 text-[11px] text-[#71717A] hover:border-[#18181B] hover:text-[#18181B]"
-          >
-            <PlusIcon className="size-3" /> Add Row
-          </button>
-        </div>
-      </>
+        <SheetAddRow cols={cols} onClick={() => addRow(sec)} />
+        <SheetTotalRow label={subLabel} cols={cols} values={{ 5: money(t.mooe), 6: money(t.ps), 7: money(t.co) }} />
+      </FlaggedSection>
     );
   }
 
   return (
-    <FormShell title="Annual GAD Plan and Budget (City/Municipality) — Annex D" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} onValidate={isEncoder ? validate : undefined}>
+    <FormShell title="Annual GAD Plan and Budget (City/Municipality) — Annex D" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
 
       {/* ── Header Info ── */}
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Header Information</p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <F label="City / Municipality" required>
-            <Input value={d.cityMunicipality} onChange={(e) => upd('cityMunicipality', e.target.value)} placeholder="e.g. Tanauan City" className="text-[12px]" />
-          </F>
-          <F label="Office / Department">
-            <Input value={d.officeName} onChange={(e) => upd('officeName', e.target.value)} placeholder="e.g. CDRRMO" className="text-[12px]" />
-          </F>
-          <F label="Province">
-            <Input value={d.province} onChange={(e) => upd('province', e.target.value)} placeholder="e.g. Batangas" className="text-[12px]" />
-          </F>
-          <F label="Region">
-            <Input value={d.region} onChange={(e) => upd('region', e.target.value)} placeholder="e.g. IV-A" className="text-[12px]" />
-          </F>
-          <F label="Fiscal Year (FY)" required>
-            <Input type="number" value={d.fy} onChange={(e) => upd('fy', Number(e.target.value))} className="text-[12px]" />
-          </F>
-          <F label="Total LGU Budget (₱)">
-            <N value={d.totalLguBudget} onChange={(v) => upd('totalLguBudget', v)} />
-          </F>
-          <F label="Total GAD Budget (₱)">
-            <N value={d.totalGadBudget} onChange={(v) => upd('totalGadBudget', v)} />
-          </F>
-        </div>
-      </div>
-
-      {/* ── Unified Table: CLIENT-FOCUSED + ORGANIZATION-FOCUSED ── */}
-      <div className="overflow-hidden rounded-[10px] border border-[#D4D4D8] bg-white">
-        <div className="overflow-x-auto">
-          <div className="min-w-[1488px]">
-
-            {/* Two-row column headers */}
-            <div
-              className={`grid ${COL} border-b border-[#D4D4D8] bg-[#18181B] text-[11px] font-semibold text-white`}
-              style={{ gridTemplateRows: 'auto auto' }}
-            >
-              <div className="row-span-2 border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Gender Issue or<br />GAD Mandate<br /><span className="text-[10px] font-normal text-zinc-400">(1)</span>
-              </div>
-              <div className="row-span-2 border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                GAD Objective<br /><span className="text-[10px] font-normal text-zinc-400">(2)</span>
-              </div>
-              <div className="row-span-2 border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Relevant LGU<br />Program/Project<br /><span className="text-[10px] font-normal text-zinc-400">(3)</span>
-              </div>
-              <div className="row-span-2 border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                GAD Activity<br /><span className="text-[10px] font-normal text-zinc-400">(4)</span>
-              </div>
-              <div className="row-span-2 border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Performance Indicator<br />&amp; Target<br /><span className="text-[10px] font-normal text-zinc-400">(5)</span>
-              </div>
-              {/* GAD Budget spanning MOOE / PS / CO — row 1 only */}
-              <div className="col-span-3 border-b border-r border-[#3F3F46] px-3 py-2 text-center font-bold">
-                GAD Budget
-              </div>
-              <div className="row-span-2 border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Lead or Responsible<br />Office<br /><span className="text-[10px] font-normal text-zinc-400">(9)</span>
-              </div>
-              <div className="row-span-2 px-2 py-3 text-center text-[10px]">Act.</div>
-              {/* Row 2: budget sub-columns */}
-              <div className="border-r border-[#3F3F46] px-3 py-2 text-center leading-tight">
-                MOOE<br /><span className="text-[10px] font-normal text-zinc-400">(6)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-2 text-center leading-tight">
-                PS<br /><span className="text-[10px] font-normal text-zinc-400">(7)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-2 text-center leading-tight">
-                CO<br /><span className="text-[10px] font-normal text-zinc-400">(8)</span>
-              </div>
+      <FlaggedSection section="header">
+        <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
+          <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Header Information</p>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+            <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-3">
+              <LockedField label="City / Municipality" value={d.cityMunicipality} />
+              <F label="Office / Department">
+                <Input value={d.officeName} onChange={(e) => upd('officeName', e.target.value)} placeholder="e.g. CDRRMO" className="text-[12px]" />
+              </F>
+              <LockedField label="Province" value={d.province} />
+              <LockedField label="Region" value={d.region} />
+              <F label="Fiscal Year (FY)" required>
+                <Input type="number" value={d.fy} onChange={(e) => upd('fy', Number(e.target.value))} className="text-[12px]" />
+              </F>
+              <F label="Total LGU Budget (₱)">
+                <N value={d.totalLguBudget} onChange={(v) => upd('totalLguBudget', v)} />
+              </F>
+              <F label="Total GAD Budget (₱)">
+                <N value={d.totalGadBudget} onChange={(v) => upd('totalGadBudget', v)} />
+              </F>
             </div>
-
-            {/* ═══ CLIENT-FOCUSED ═══ */}
-            <div className="border-b border-[#D4D4D8] bg-[#27272A] px-4 py-2 text-[12px] font-bold uppercase tracking-widest text-white">
-              CLIENT-FOCUSED
-            </div>
-            {DataRows({ sec: 'clientFocused' })}
-
-            {/* Sub Total A */}
-            <div className={`grid ${SUBTOTAL_COL} border-b-2 border-[#27272A] bg-[#F4F4F5]`}>
-              <div className="border-r border-[#D4D4D8] px-4 py-2 text-[12px] font-bold text-[#09090B]">Sub Total A</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(cfSum.mooe)}</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(cfSum.ps)}</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(cfSum.co)}</div>
-              <div className="px-3 py-2" />
-            </div>
-
-            {/* ═══ ORGANIZATION FOCUSED ═══ */}
-            <div className="border-b border-[#D4D4D8] bg-[#27272A] px-4 py-2 text-[12px] font-bold uppercase tracking-widest text-white">
-              ORGANIZATION FOCUSED
-            </div>
-            {DataRows({ sec: 'organizationFocused' })}
-
-            {/* Sub Total B */}
-            <div className={`grid ${SUBTOTAL_COL} bg-[#F4F4F5]`}>
-              <div className="border-r border-[#D4D4D8] px-4 py-2 text-[12px] font-bold text-[#09090B]">Sub Total B</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(ofSum.mooe)}</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(ofSum.ps)}</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(ofSum.co)}</div>
-              <div className="px-3 py-2" />
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      {/* ── ATTRIBUTED PROGRAMS ── */}
-      <div className="overflow-hidden rounded-[10px] border border-[#D4D4D8] bg-white">
-        <div className="overflow-x-auto">
-          <div className="min-w-[978px]">
-
-            <div className="border-b border-[#D4D4D8] bg-[#27272A] px-4 py-2 text-[12px] font-bold uppercase tracking-widest text-white">
-              ATTRIBUTED PROGRAMS
-            </div>
-
-            <div className={`grid ${ATTR_COL} border-b border-[#D4D4D8] bg-[#18181B] text-[11px] font-semibold text-white`}>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Title of LGU Program<br />or Project<br /><span className="text-[10px] font-normal text-zinc-400">(10)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Funding Facility/<br />Generic Checklist<br />Score<br /><span className="text-[10px] font-normal text-zinc-400">(11)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Total Annual Program/<br />Project Budget<br /><span className="text-[10px] font-normal text-zinc-400">(12)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                GAD Attributed<br />Program/Project Budget<br /><span className="text-[10px] font-normal text-zinc-400">(13)</span>
-              </div>
-              <div className="border-r border-[#3F3F46] px-3 py-3 text-center leading-tight">
-                Lead or Responsible<br />Office<br /><span className="text-[10px] font-normal text-zinc-400">(14)</span>
-              </div>
-              <div className="px-2 py-3 text-center text-[10px]">Act.</div>
-            </div>
-
-            {d.attributedPrograms.map((row, i) => (
-              <div key={i} className={`grid ${ATTR_COL} border-b border-[#E4E4E7] bg-white`}>
-                <div className="border-r border-[#E4E4E7] p-2">
-                  <T value={row.projectTitle} onChange={(v) => {
-                    upd('attributedPrograms', d.attributedPrograms.map((r, idx) => idx === i ? { ...r, projectTitle: v } : r));
-                  }} placeholder="Project/Program title" rows={3} />
-                </div>
-                <div className="border-r border-[#E4E4E7] p-2">
-                  <N value={row.hgdgScore} onChange={(v) => {
-                    upd('attributedPrograms', d.attributedPrograms.map((r, idx) => idx === i ? { ...r, hgdgScore: v } : r));
-                  }} />
-                </div>
-                <div className="border-r border-[#E4E4E7] p-2">
-                  <N value={row.totalBudget} onChange={(v) => {
-                    upd('attributedPrograms', d.attributedPrograms.map((r, idx) => idx === i ? { ...r, totalBudget: v } : r));
-                  }} />
-                </div>
-                <div className="border-r border-[#E4E4E7] p-2">
-                  <N value={row.gadAttributedBudget} onChange={(v) => {
-                    upd('attributedPrograms', d.attributedPrograms.map((r, idx) => idx === i ? { ...r, gadAttributedBudget: v } : r));
-                  }} />
-                </div>
-                <div className="border-r border-[#E4E4E7] p-2">
-                  <Input value={row.responsibleOffice} onChange={(e) => {
-                    upd('attributedPrograms', d.attributedPrograms.map((r, idx) => idx === i ? { ...r, responsibleOffice: e.target.value } : r));
-                  }} placeholder="Office name" className="text-[12px]" />
-                </div>
-                <div className="flex items-start justify-center p-2">
-                  {d.attributedPrograms.length > 1 && (
-                    <DelBtn onClick={() => upd('attributedPrograms', d.attributedPrograms.filter((_, idx) => idx !== i))} />
-                  )}
-                </div>
-              </div>
-            ))}
-
-            <div className={`grid ${ATTR_SUBTOTAL_COL} border-b border-[#D4D4D8] bg-[#FAFAFA]`}>
-              <div className="border-r border-[#D4D4D8] px-4 py-2 text-[12px] font-bold text-[#09090B]">Sub-total Attributed</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2" />
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(attrSum.tot)}</div>
-              <div className="border-r border-[#D4D4D8] px-3 py-2 text-right text-[12px] font-bold text-[#09090B]">{fmt(attrSum.attr)}</div>
-              <div className="px-3 py-2" />
-            </div>
-
-            <div className="bg-[#FAFAFA] p-2">
-              <button type="button"
-                onClick={() => upd('attributedPrograms', [...d.attributedPrograms, blankAttrRow()])}
-                className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed border-[#D4D4D8] px-3 py-2 text-[12px] text-[#71717A] hover:border-[#18181B] hover:text-[#18181B]"
-              >
-                <PlusIcon className="size-3.5" /> Add Attributed Program
-              </button>
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      {/* ── Grand Total (A+B) ── */}
-      <div className="overflow-hidden rounded-[10px] border border-[#D4D4D8]">
-        <div className="flex items-center justify-between bg-[#09090B] px-4 py-3 text-white">
-          <span className="text-[13px] font-bold">Grand Total (A+B)</span>
-          <div className="flex items-center gap-8 text-[13px] font-bold">
-            <div className="text-right">
-              <span className="mr-2 text-[11px] font-normal text-zinc-400">MOOE:</span>
-              {fmt(grandMooe)}
-            </div>
-            <div className="text-right">
-              <span className="mr-2 text-[11px] font-normal text-zinc-400">PS:</span>
-              {fmt(grandPs)}
-            </div>
-            <div className="text-right">
-              <span className="mr-2 text-[11px] font-normal text-zinc-400">CO:</span>
-              {fmt(grandCo)}
+            <div className="lg:w-64 lg:shrink-0">
+              <GadBudgetShare totalBudget={d.totalLguBudget} gadBudget={d.totalGadBudget} budgetLabel="LGU" />
             </div>
           </div>
         </div>
+      </FlaggedSection>
+
+      <div>
+        <SheetHint />
+        <SheetGrid>
+          <SheetHead cols={CITY_GPB_COLS} />
+          {CityGPBSection('clientFocused', 'Client-Focused', 'Sub Total A')}
+          {CityGPBSection('organizationFocused', 'Organization Focused', 'Sub Total B')}
+          <SheetTotalRow label="Grand Total (A+B)" cols={CITY_GPB_COLS} accent
+            values={{ 5: money(grandMooe), 6: money(grandPs), 7: money(grandCo) }} />
+        </SheetGrid>
       </div>
+
+      <AttributedSheet
+        rows={d.attributedPrograms}
+        onChange={(v) => upd('attributedPrograms', v)}
+        cols={CITY_GPB_ATTR_COLS}
+        lastKey="responsibleOffice"
+        subLabel="Sub-total Attributed"
+      />
 
       {/* ── Signatories ── */}
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
-        <div className="grid grid-cols-3 gap-3">
-          <F label="Prepared by (GAD Focal / TWG Member)">
-            <Input value={d.preparedBy} onChange={(e) => upd('preparedBy', e.target.value)} placeholder="Full name" className="text-[12px]" />
-          </F>
-          <F label="Approved by (Department Head)">
-            <Input value={d.approvedBy} onChange={(e) => upd('approvedBy', e.target.value)} placeholder="Full name" className="text-[12px]" />
-          </F>
-          <F label="Date">
-            <Input type="date" value={d.date} onChange={(e) => upd('date', e.target.value)} className="text-[12px]" />
-          </F>
+      <FlaggedSection section="signatories">
+        <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
+          <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
+          <div className="grid grid-cols-3 gap-3">
+            <F label="Prepared by (GAD Focal / TWG Member)">
+              <Input value={d.preparedBy} onChange={(e) => upd('preparedBy', e.target.value)} placeholder="Full name" className="text-[12px]" />
+            </F>
+            <F label="Approved by (Department Head)">
+              <Input value={d.approvedBy} onChange={(e) => upd('approvedBy', e.target.value)} placeholder="Full name" className="text-[12px]" />
+            </F>
+            <F label="Date">
+              <Input type="date" value={d.date} onChange={(e) => upd('date', e.target.value)} className="text-[12px]" />
+            </F>
+          </div>
         </div>
-      </div>
+      </FlaggedSection>
     </FormShell>
   );
 }
 
 // ─── City AR Form ─────────────────────────────────────────────────────────
 
-export function CityARForm({ template, onBack, initialData, editId, isDraftEdit }: FormProps<CityARFormData>) {
+// Column geometry mirrors `CITY AR TEMPLATE.xlsx` — same order, same numbering,
+// widths proportional to the sheet's own column widths. Field (1) spans the
+// template's A:B, which is why it's the widest.
+const CITY_AR_COLS: SheetColumn[] = [
+  { label: 'Gender Issue or GAD Mandate',      num: 1,  width: 260, required: true, sticky: true },
+  { label: 'GAD Objective',                    num: 2,  width: 172 },
+  { label: 'Relevant LGU Program or Project',  num: 3,  width: 170 },
+  { label: 'GAD Activity',                     num: 4,  width: 184, required: true },
+  { label: 'Performance Indicator and Target', num: 5,  width: 200 },
+  { label: 'Actual Results',                   num: 6,  width: 200 },
+  { label: 'Approved GAD Budget',              num: 7,  width: 150, align: 'right' },
+  { label: 'Actual GAD Cost or Expenditure',   num: 8,  width: 150, align: 'right' },
+  { label: 'Variance or Remarks · with proof', num: 9,  width: 260 },
+  { label: 'Lead or Responsible Office',       num: 10, width: 180 },
+];
+
+// The attributed band restarts at (8) in the official form — kept as printed.
+const CITY_AR_ATTR_COLS: SheetColumn[] = [
+  { label: 'Title of LGU Program or Project',   num: 8,  width: 300, sticky: true },
+  { label: 'HGDG Design / Funding Facility / Generic Checklist Score', num: 9, width: 190, align: 'center' },
+  { label: 'Total Annual Program / Project Budget',  num: 10, width: 200, align: 'right' },
+  { label: 'GAD Attributed Program / Project Budget', num: 11, width: 200, align: 'right' },
+  { label: 'Lead or Responsible Office',        num: 12, width: 190 },
+];
+
+export function CityARForm({ template, onBack, initialData, editId, isDraftEdit, isPendingEdit }: FormProps<CityARFormData>) {
   const fy = new Date().getFullYear();
-  const [d, setD] = useState<CityARFormData>(initialData ?? {
+  const { user } = useAuth();
+  const [d, setD, autosave] = useAutosavedState<CityARFormData>(
+    { templateId: template.id, userId: user?.id, editId, base: initialData },
+    () => withFixedLocation(initialData ?? {
     region: 'IV-A', province: 'Batangas', cityMunicipality: 'Tanauan City',
     officeName: '', quarter: 'Annual', fy, totalLguBudget: 0, totalGadBudget: 0,
     clientFocused: [blankCityARRow()],
     organizationFocused: [blankCityARRow()],
     attributedPrograms: [blankAttrRow()],
     preparedBy: '', approvedBy: '', date: '',
-  });
+  }),
+  );
   const [busy, setBusy] = useState(false);
-  const { user } = useAuth();
   const submitMutation = useSubmitForApproval();
   const updateMutation = useUpdateSubmission();
   const draftMutation = useSaveDraft();
@@ -1509,6 +1260,7 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit 
         await draftMutation.mutateAsync({ templateId: template.id, formData: d });
         toast.success('Draft saved! You can find it in My Submissions.');
       }
+      autosave.clear();
       onBack();
     } catch { toast.error('Failed to save draft. Try again.'); }
     finally { setBusy(false); }
@@ -1522,7 +1274,7 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit 
       return 'All rows must have a Gender Issue or GAD Mandate filled in.';
     if (allRows.some((r) => !r.activity.trim()))
       return 'All rows must have a GAD Activity filled in.';
-    return null;
+    return validateGadShare(d.totalLguBudget, d.totalGadBudget, 'LGU');
   }
 
   async function saveEdit() {
@@ -1533,9 +1285,10 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit 
     try {
       setBusy(true);
       await updateMutation.mutateAsync({ id: editId!, formData: d, resubmit: isEncoder });
-      toast.success(isDraftEdit ? 'Form submitted for approval!' : isEncoder ? 'Form resubmitted for review!' : 'Changes saved.');
+      toast.success(isDraftEdit ? 'Form submitted for approval!' : isPendingEdit ? 'Changes saved — still waiting for review.' : isEncoder ? 'Form resubmitted for review!' : 'Changes saved.');
+      autosave.clear();
       onBack();
-    } catch { toast.error('Failed to save. Try again.'); }
+    } catch (err) { toast.error(apiErrorMessage(err, 'Failed to save. Try again.')); }
     finally { setBusy(false); }
   }
 
@@ -1545,6 +1298,14 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit 
   }
   function addRow(sec: 'clientFocused' | 'organizationFocused') { setD((p) => ({ ...p, [sec]: [...p[sec], blankCityARRow()] })); }
   function remRow(sec: 'clientFocused' | 'organizationFocused', i: number) { setD((p) => ({ ...p, [sec]: p[sec].filter((_, idx) => idx !== i) })); }
+
+
+  const importFromGpb = useCallback((gpb: FormSubmission, auto: boolean) => {
+    setD((p) => importCityGpb(p, gpb.formData as CityGPBFormData, gpb.id));
+    toast.success(auto
+      ? `Auto-filled from your plan "${gpb.title}".`
+      : `Copied the planned activities from "${gpb.title}".`);
+  }, [setD]);
 
   async function generate() {
     const err = validate();
@@ -1559,133 +1320,213 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit 
       setBusy(true);
       await submitMutation.mutateAsync({ templateId: template.id, formData: d });
       toast.success('Form submitted for approval! You can track it in My Submissions.');
+      autosave.clear();
       onBack();
     } catch { toast.error('Failed to submit. Try again.'); }
     finally { setBusy(false); }
   }
 
-  function ARRows({ sec }: { sec: 'clientFocused' | 'organizationFocused' }) {
+  // ── Live totals, matching the sub-total formulas written into the Excel ──
+  const totals = (rows: CityARRow[]) => rows.reduce(
+    (a, r) => ({ approved: a.approved + r.approvedBudget, actual: a.actual + r.actualCost }),
+    { approved: 0, actual: 0 }
+  );
+  const subA = totals(d.clientFocused);
+  const subB = totals(d.organizationFocused);
+  const subC = d.attributedPrograms.reduce(
+    (a, r) => ({ total: a.total + r.totalBudget, gad: a.gad + r.gadAttributedBudget }),
+    { total: 0, gad: 0 }
+  );
+  const grandGad = subA.approved + subB.approved + subC.gad;
+
+  /** One CLIENT-FOCUSED / ORGANIZATION FOCUSED band. Called as {DataSection(...)},
+   *  not <DataSection/> — see GPBRows for why. */
+  function DataSection({
+    sec, banner, subTotalLabel, sub,
+  }: {
+    sec: 'clientFocused' | 'organizationFocused';
+    banner: string;
+    subTotalLabel: string;
+    sub: { approved: number; actual: number };
+  }) {
     const rows = d[sec];
+    const cols = CITY_AR_COLS;
     return (
       <>
-        {rows.map((row, i) => (
-          <div key={i} className="flex items-start gap-2 rounded-md border border-[#EBEBEB] bg-[#FAFAFA] p-3">
-            <span className="mt-1 flex size-5 shrink-0 items-center justify-center rounded-full bg-[#18181B] text-[10px] font-bold text-white">{i + 1}</span>
-            <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-3">
-              <F label="Gender Issue or GAD Mandate (1)" required>
-                <T value={row.gadIssue} onChange={(v) => updRow(sec, i, 'gadIssue', v)} placeholder="RA / Issue..." />
-              </F>
-              <F label="GAD Objective (2)">
-                <T value={row.gadObjective} onChange={(v) => updRow(sec, i, 'gadObjective', v)} placeholder="Objective..." />
-              </F>
-              <F label="Relevant LGU Program/Project (3)">
-                <Input value={row.relevantProgram} onChange={(e) => updRow(sec, i, 'relevantProgram', e.target.value)}
-                  placeholder="Program name" className="text-[12px]" />
-              </F>
-              <F label="GAD Activity (4)" required>
-                <T value={row.activity} onChange={(v) => updRow(sec, i, 'activity', v)} placeholder="Activity description" />
-              </F>
-              <F label="Performance Indicator & Target (5)">
-                <T value={row.indicator} onChange={(v) => updRow(sec, i, 'indicator', v)} placeholder="Indicator and target" />
-              </F>
-              <F label="Actual Results (6)">
-                <T value={row.actualResults} onChange={(v) => updRow(sec, i, 'actualResults', v)} placeholder="Actual accomplishments" />
-              </F>
-              <F label="Approved GAD Budget (₱) (7)">
-                <N value={row.approvedBudget} onChange={(v) => updRow(sec, i, 'approvedBudget', v)} />
-              </F>
-              <F label="Actual GAD Cost/Expenditure (₱) (8)">
-                <N value={row.actualCost} onChange={(v) => updRow(sec, i, 'actualCost', v)} />
-              </F>
-              <F label="Variance or Remarks (9)">
-                <Input value={row.variance} onChange={(e) => updRow(sec, i, 'variance', e.target.value)}
-                  placeholder="Variance" className="text-[12px]" />
-              </F>
-              <F label="Lead/Responsible Office (10)">
-                <Input value={row.responsibleOffice} onChange={(e) => updRow(sec, i, 'responsibleOffice', e.target.value)}
-                  placeholder="Office name" className="text-[12px]" />
-              </F>
-            </div>
-            {rows.length > 1 && <DelBtn onClick={() => remRow(sec, i)} />}
-          </div>
-        ))}
-        <button type="button" onClick={() => addRow(sec)}
-          className="flex w-full items-center gap-1.5 rounded-md border border-dashed border-[#D4D4D8] px-3 py-2 text-[12px] text-[#71717A] transition-colors hover:border-[#18181B] hover:text-[#18181B]"
-        ><PlusIcon className="size-3.5" /> Add Row</button>
+        <FlaggedSection section={sec}>
+          <SheetBanner cols={cols}>{banner}</SheetBanner>
+          {rows.map((row, i) => {
+            // Planned columns copied from the GPB stay read-only on the AR.
+            const locked = !!row.gpbRef;
+            const text = (ci: number, key: keyof CityARRow, placeholder: string, planned = false) => (
+              <SheetCell
+                key={key} col={cols[ci]} cols={cols} index={ci}
+                value={row[key] as string} placeholder={placeholder}
+                locked={planned && locked}
+                onChange={(v) => updRow(sec, i, key, v as CityARRow[typeof key])}
+              />
+            );
+            return (
+              <FlaggedRow key={i} section={sec} row={i + 1}>
+                <SheetRow index={i} cols={cols} onRemove={rows.length > 1 ? () => remRow(sec, i) : undefined}>
+                  {text(0, 'gadIssue', 'RA / gender issue…', true)}
+                  {text(1, 'gadObjective', 'Objective…', true)}
+                  {text(2, 'relevantProgram', 'Program name', true)}
+                  {text(3, 'activity', 'Activity description', true)}
+                  {text(4, 'indicator', 'Indicator and target', true)}
+                  {text(5, 'actualResults', 'Actual accomplishments')}
+                  {locked ? (
+                    <SheetCell col={cols[6]} cols={cols} index={6} numeric locked
+                      value={row.approvedBudget ? money(row.approvedBudget) : ''} />
+                  ) : (
+                    <SheetNumCell col={cols[6]} cols={cols} index={6}
+                      value={row.approvedBudget} onChange={(v) => updRow(sec, i, 'approvedBudget', v)} />
+                  )}
+                  <SheetNumCell col={cols[7]} cols={cols} index={7}
+                    value={row.actualCost} onChange={(v) => updRow(sec, i, 'actualCost', v)} />
+                  <SheetSlot col={cols[8]}>
+                    <EvidenceField
+                      value={row.variance}
+                      onChange={(v) => updRow(sec, i, 'variance', v)}
+                      files={row.evidence ?? []}
+                      onFilesChange={(files: EvidenceFile[]) => updRow(sec, i, 'evidence', files)}
+                    />
+                  </SheetSlot>
+                  {text(9, 'responsibleOffice', 'Office name', true)}
+                </SheetRow>
+              </FlaggedRow>
+            );
+          })}
+          <SheetAddRow cols={cols} onClick={() => addRow(sec)} />
+          <SheetTotalRow label={subTotalLabel} cols={cols}
+            values={{ 6: money(sub.approved), 7: money(sub.actual) }} />
+        </FlaggedSection>
       </>
     );
   }
 
   return (
-    <FormShell title="GAD Accomplishment Report (City/Municipality) — Annex E" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} onValidate={isEncoder ? validate : undefined}>
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Header Information</p>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <F label="City / Municipality" required>
-            <Input value={d.cityMunicipality} onChange={(e) => upd('cityMunicipality', e.target.value)} placeholder="e.g. Tanauan City" className="text-[12px]" />
-          </F>
-          <F label="Office / Department (Name of Office)">
-            <Input value={d.officeName} onChange={(e) => upd('officeName', e.target.value)} placeholder="e.g. CDRRMO" className="text-[12px]" />
-          </F>
-          <F label="Quarter">
-            <Input value={d.quarter} onChange={(e) => upd('quarter', e.target.value)} placeholder="e.g. Annual / 4th Quarter" className="text-[12px]" />
-          </F>
-          <F label="Province">
-            <Input value={d.province} onChange={(e) => upd('province', e.target.value)} placeholder="e.g. Batangas" className="text-[12px]" />
-          </F>
-          <F label="Region">
-            <Input value={d.region} onChange={(e) => upd('region', e.target.value)} placeholder="e.g. IV-A" className="text-[12px]" />
-          </F>
-          <F label="Fiscal Year (FY)" required>
-            <Input type="number" value={d.fy} onChange={(e) => upd('fy', Number(e.target.value))} className="text-[12px]" />
-          </F>
-          <F label="Total LGU Budget (₱)">
-            <N value={d.totalLguBudget} onChange={(v) => upd('totalLguBudget', v)} />
-          </F>
-          <F label="Total GAD Budget (₱)">
-            <N value={d.totalGadBudget} onChange={(v) => upd('totalGadBudget', v)} />
-          </F>
+    <FormShell title="GAD Accomplishment Report (City/Municipality) — Annex E" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
+      {/* ── Sheet heading, as printed above the table ── */}
+      <FlaggedSection section="header">
+        <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
+          <p className="mb-4 text-center text-[13px] font-bold uppercase tracking-wide text-[#09090B]">
+            {(d.quarter || '').trim()
+              ? `${d.quarter.toUpperCase()} GENDER AND DEVELOPMENT (GAD) ACCOMPLISHMENT REPORT`
+              : 'GENDER AND DEVELOPMENT (GAD) ACCOMPLISHMENT REPORT'}
+            <span className="ml-2 text-[11px] font-semibold text-[#71717A]">FY {d.fy || '—'} · ANNEX E</span>
+          </p>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+            <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-3">
+              <LockedField label="Region" value={d.region} />
+              <LockedField label="Province" value={d.province} />
+              <LockedField label="City / Municipality" value={d.cityMunicipality} />
+              <F label="Name of Office">
+                <Input value={d.officeName} onChange={(e) => upd('officeName', e.target.value)} placeholder="e.g. CDRRMO" className="text-[12px]" />
+              </F>
+              <F label="Quarter">
+                <Input value={d.quarter} onChange={(e) => upd('quarter', e.target.value)} placeholder="e.g. 4th / Annual" className="text-[12px]" />
+              </F>
+              <F label="Fiscal Year (FY)" required>
+                <Input type="number" value={d.fy} onChange={(e) => upd('fy', Number(e.target.value))} className="text-[12px]" />
+              </F>
+              <F label="Total LGU Budget (₱)">
+                <N value={d.totalLguBudget} onChange={(v) => upd('totalLguBudget', v)} />
+              </F>
+              <F label="Total GAD Budget (₱)">
+                <N value={d.totalGadBudget} onChange={(v) => upd('totalGadBudget', v)} />
+              </F>
+            </div>
+            <div className="lg:w-64 lg:shrink-0">
+              <GadBudgetShare totalBudget={d.totalLguBudget} gadBudget={d.totalGadBudget} budgetLabel="LGU" />
+            </div>
+          </div>
         </div>
-      </div>
+      </FlaggedSection>
 
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-3 inline-block rounded bg-[#18181B] px-2 py-1 text-[12px] font-bold uppercase tracking-wider text-white">CLIENT-FOCUSED</p>
-        <div className="space-y-2"><ARRows sec="clientFocused" /></div>
-      </div>
+      {isEncoder && (
+        <GpbImportPanel
+          gpbTemplateId="CITY_GPB"
+          sourceGpbId={d.sourceGpbId}
+          year={d.fy}
+          autoImport={!editId && !initialData}
+          lockedCols="(1)–(5) and (10)"
+          onImport={importFromGpb}
+        />
+      )}
 
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-3 inline-block rounded bg-[#18181B] px-2 py-1 text-[12px] font-bold uppercase tracking-wider text-white">ORGANIZATION FOCUSED</p>
-        <div className="space-y-2"><ARRows sec="organizationFocused" /></div>
-      </div>
+      {/* ── The table itself, one horizontally-scrolling sheet ── */}
+      <div>
+        <SheetHint />
 
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-3 inline-block rounded bg-[#18181B] px-2 py-1 text-[12px] font-bold uppercase tracking-wider text-white">ATTRIBUTED PROGRAMS</p>
-        <AttributedSection rows={d.attributedPrograms} onChange={(v) => upd('attributedPrograms', v)} showOffice={true} />
-      </div>
+        <SheetGrid>
+          <SheetHead cols={CITY_AR_COLS} />
+          {DataSection({ sec: 'clientFocused', banner: 'Client- Focused', subTotalLabel: 'Sub Total A', sub: subA })}
+          {DataSection({ sec: 'organizationFocused', banner: 'Organization Focused', subTotalLabel: 'Sub Total B', sub: subB })}
+        </SheetGrid>
 
-      <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-        <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
-        <div className="grid grid-cols-3 gap-3">
-          <F label="Prepared by (GAD Focal / TWG Member)">
-            <Input value={d.preparedBy} onChange={(e) => upd('preparedBy', e.target.value)} placeholder="Full name" className="text-[12px]" />
-          </F>
-          <F label="Approved by (Department Head)">
-            <Input value={d.approvedBy} onChange={(e) => upd('approvedBy', e.target.value)} placeholder="Full name" className="text-[12px]" />
-          </F>
-          <F label="Date">
-            <Input type="date" value={d.date} onChange={(e) => upd('date', e.target.value)} className="text-[12px]" />
-          </F>
+        <div className="mt-4">
+          <AttributedSheet
+            rows={d.attributedPrograms}
+            onChange={(v) => upd('attributedPrograms', v)}
+            cols={CITY_AR_ATTR_COLS}
+            lastKey="responsibleOffice"
+            after={
+              <SheetTotalRow label="Grand Total (A+B+C)" cols={CITY_AR_ATTR_COLS} accent
+                values={{ 2: money(subC.total), 3: money(grandGad) }} />
+            }
+          />
         </div>
+
+        <p className="mt-2 text-[11px] text-[#71717A]">
+          Grand total GAD budget = Sub Total A ({money(subA.approved)}) + Sub Total B
+          ({money(subB.approved)}) + attributed share from C ({money(subC.gad)}).
+        </p>
       </div>
+
+      {/* ── Signatories ── */}
+      <FlaggedSection section="signatories">
+        <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
+          <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <F label="Prepared by (Office — GAD TWG)">
+              <Input value={d.preparedBy} onChange={(e) => upd('preparedBy', e.target.value)} placeholder="Full name" className="text-[12px]" />
+            </F>
+            <F label="Approved by (Department Manager)">
+              <Input value={d.approvedBy} onChange={(e) => upd('approvedBy', e.target.value)} placeholder="Full name" className="text-[12px]" />
+            </F>
+            <F label="Date">
+              <Input type="date" value={d.date} onChange={(e) => upd('date', e.target.value)} className="text-[12px]" />
+            </F>
+          </div>
+        </div>
+      </FlaggedSection>
     </FormShell>
   );
 }
+
 
 // ─── Main Page ────────────────────────────────────────────────────────────
 
 export default function TemplatesPage() {
   const { data: templates, isLoading } = useGetTemplates();
-  const [selected, setSelected] = useState<TemplateDef | null>(null);
+  // The open form lives in the URL (?form=BARANGAY_AR) so a refresh — or the
+  // browser's Back button — lands on the same form instead of the template list.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const formId = searchParams.get('form');
+  const selected = formId ? (templates ?? []).find((t) => t.id === formId) ?? null : null;
+  const setSelected = (t: TemplateDef | null) => setSearchParams(t ? { form: t.id } : {});
+
+  if (formId && isLoading) {
+    return (
+      <DashboardLayout title="GAD Templates" breadcrumb="Tools / GAD Templates" defaultSidebarOpen={false}>
+        <div className="space-y-3">
+          <Skeleton className="h-10 w-72" />
+          <Skeleton className="h-64 rounded-[10px]" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   if (selected) {
     const formProps = { template: selected, onBack: () => setSelected(null) };

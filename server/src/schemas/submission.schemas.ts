@@ -9,6 +9,8 @@ export const createSubmissionSchema = z.object({
 export const reviewSubmissionSchema = z.object({
   status: z.enum(['APPROVED', 'RETURNED']),
   remarks: z.string().max(2000).optional(),
+  /** The version the reviewer looked at; a newer edit by the encoder rejects the review. */
+  expectedUpdatedAt: z.string().datetime().optional(),
 });
 
 export const updateFormDataSchema = z.object({

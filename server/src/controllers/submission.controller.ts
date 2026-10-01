@@ -3,6 +3,9 @@ import { randomUUID } from 'crypto';
 import type { Prisma } from '@prisma/client';
 import { AuthRequest } from '../types';
 import { sendSuccess, sendError } from '../utils/response';
+import { applyFixedLocation } from '../utils/location';
+import { gadShareError } from '../utils/gadBudget';
+import { isReviewSection, hasRows } from '../utils/reviewSections';
 import prisma from '../utils/db';
 import { buildExcelForType } from './template.controller';
 import { buildPdfForType } from '../utils/pdf';
@@ -28,7 +31,10 @@ const SUBMISSION_INCLUDE = {
   },
   reviewer: { select: { id: true, name: true } },
   comments: {
-    include: { author: { select: { id: true, name: true, role: true } } },
+    include: {
+      author:     { select: { id: true, name: true, role: true } },
+      resolvedBy: { select: { id: true, name: true } },
+    },
     orderBy: { createdAt: 'asc' as const },
   },
 } as const;
@@ -61,7 +67,15 @@ export async function create(req: AuthRequest, res: Response): Promise<void> {
       sendError(res, parsed.error.issues[0]?.message ?? 'Invalid request body.', 400);
       return;
     }
-    const { templateId, formData, isDraft } = parsed.data;
+    const { templateId, isDraft } = parsed.data;
+    const me = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { barangay: true } });
+    const formData = applyFixedLocation(templateId, parsed.data.formData, me?.barangay);
+
+    // Drafts may be incomplete; only a real submission must meet the 5% GAD budget rule.
+    if (!isDraft) {
+      const budgetErr = gadShareError(templateId, formData);
+      if (budgetErr) { sendError(res, budgetErr, 400); return; }
+    }
 
     const title = deriveTitle(templateId, formData);
 
@@ -103,6 +117,7 @@ export async function list(req: AuthRequest, res: Response): Promise<void> {
     const rawPage   = req.query['page'];
     const rawLimit  = req.query['limit'];
     const rawDept   = req.query['department'];
+    const rawTpl    = req.query['templateId'];
 
     const statusFilter =
       typeof rawStatus === 'string' &&
@@ -111,6 +126,10 @@ export async function list(req: AuthRequest, res: Response): Promise<void> {
         : undefined;
 
     const departmentFilter = typeof rawDept === 'string' && rawDept ? rawDept : undefined;
+    const templateFilter =
+      typeof rawTpl === 'string' && ['BARANGAY_GPB', 'BARANGAY_AR', 'CITY_GPB', 'CITY_AR'].includes(rawTpl)
+        ? rawTpl
+        : undefined;
 
     const page  = Math.max(1, parseInt(typeof rawPage  === 'string' ? rawPage  : '1',  10) || 1);
     const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(typeof rawLimit === 'string' ? rawLimit : String(DEFAULT_LIMIT), 10) || DEFAULT_LIMIT));
@@ -130,6 +149,7 @@ export async function list(req: AuthRequest, res: Response): Promise<void> {
         if (extraStatus) conditions.push({ status: extraStatus });
       }
       if (departmentFilter) conditions.push({ submitter: { departmentId: departmentFilter } });
+      if (templateFilter) conditions.push({ templateId: templateFilter });
       return conditions.length === 1 ? conditions[0]! : { AND: conditions };
     }
 
@@ -299,16 +319,27 @@ export async function review(req: AuthRequest, res: Response): Promise<void> {
     if (!parsed.success) {
       sendError(res, parsed.error.issues[0]?.message ?? 'Invalid request body.', 400); return;
     }
-    const { status, remarks } = parsed.data;
+    const { status, remarks, expectedUpdatedAt } = parsed.data;
 
     // Atomic: find + update in one transaction to prevent double-review races.
     const result = await prisma.$transaction(async (tx) => {
       const submission = await tx.formSubmission.findUnique({ where: { id } });
       if (!submission) return { error: 'not_found' as const };
       if (submission.status !== 'PENDING') return { error: 'not_pending' as const };
+      // Encoders may keep editing a pending form; never approve a version the
+      // reviewer hasn't seen.
+      if (expectedUpdatedAt && submission.updatedAt.getTime() !== new Date(expectedUpdatedAt).getTime()) {
+        return { error: 'stale' as const };
+      }
 
+      // Status and version are re-checked by the write itself, so an encoder
+      // save that lands mid-review makes this update miss (P2025 → stale).
       const updated = await tx.formSubmission.update({
-        where: { id },
+        where: {
+          id,
+          status: 'PENDING',
+          ...(expectedUpdatedAt ? { updatedAt: new Date(expectedUpdatedAt) } : {}),
+        },
         data: {
           status,
           remarks:    remarks?.trim() || null,
@@ -337,6 +368,9 @@ export async function review(req: AuthRequest, res: Response): Promise<void> {
 
     if ('error' in result) {
       if (result.error === 'not_found') { sendError(res, 'Submission not found.', 404); return; }
+      if (result.error === 'stale') {
+        sendError(res, 'The encoder updated this submission while you were reviewing it. Reload to see the latest version.', 409); return;
+      }
       sendError(res, 'Only pending submissions can be reviewed.', 400); return;
     }
 
@@ -356,6 +390,10 @@ export async function review(req: AuthRequest, res: Response): Promise<void> {
 
     sendSuccess(res, result.updated, `Submission ${status.toLowerCase()} successfully.`);
   } catch (err) {
+    // The conditional write missed: the form changed or was decided mid-review.
+    if ((err as { code?: string }).code === 'P2025') {
+      sendError(res, 'This submission changed while you were reviewing it. Reload to see the latest version.', 409); return;
+    }
     console.error('Review submission error:', err);
     sendError(res, 'Failed to review submission.', 500);
   }
@@ -440,15 +478,29 @@ export async function updateFormData(req: AuthRequest, res: Response): Promise<v
     if (!parsed.success) {
       sendError(res, parsed.error.issues[0]?.message ?? 'Invalid request body.', 400); return;
     }
-    const { formData, resubmit } = parsed.data;
+    const { resubmit } = parsed.data;
 
-    const submission = await prisma.formSubmission.findUnique({ where: { id } });
+    const submission = await prisma.formSubmission.findUnique({
+      where: { id },
+      include: { submitter: { select: { barangay: true } } },
+    });
     if (!submission) { sendError(res, 'Submission not found.', 404); return; }
+
+    // Barangay stays tied to the submitting encoder's assignment, even when an admin edits.
+    const formData = applyFixedLocation(submission.templateId, parsed.data.formData, submission.submitter?.barangay);
+
+    // Sending a form (back) into review must meet the 5% GAD budget rule.
+    if (!isAdmin && resubmit) {
+      const budgetErr = gadShareError(submission.templateId, formData);
+      if (budgetErr) { sendError(res, budgetErr, 400); return; }
+    }
 
     if (!isAdmin) {
       if (submission.submittedBy !== req.user!.id) { sendError(res, 'Access denied.', 403); return; }
-      if (submission.status !== 'RETURNED' && submission.status !== 'DRAFT') {
-        sendError(res, 'You can only edit a submission that was returned or is a draft.', 400); return;
+      // Pending forms stay editable until the admin decides, so encoders fix
+      // mistakes in place instead of filing a second submission.
+      if (submission.status === 'APPROVED') {
+        sendError(res, 'An approved submission can no longer be edited.', 400); return;
       }
     }
 
@@ -463,11 +515,21 @@ export async function updateFormData(req: AuthRequest, res: Response): Promise<v
       data['remarks']    = null;
     }
 
-    const updated = await prisma.formSubmission.update({
-      where: { id },
-      data,
-      include: SUBMISSION_INCLUDE,
-    });
+    // For encoders the "not approved" check is part of the write itself, so an
+    // approval landing between the read above and this save can't be undone.
+    let updated;
+    try {
+      updated = await prisma.formSubmission.update({
+        where: isAdmin ? { id } : { id, status: { not: 'APPROVED' } },
+        data,
+        include: SUBMISSION_INCLUDE,
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code === 'P2025') {
+        sendError(res, 'This submission was just approved and can no longer be edited.', 409); return;
+      }
+      throw e;
+    }
 
     // Admin edited an encoder's form → notify the encoder.
     if (isAdmin && submission.submittedBy !== req.user!.id) {
@@ -491,7 +553,8 @@ export async function updateFormData(req: AuthRequest, res: Response): Promise<v
 
 // ─── POST /api/submissions/:id/comments ───────────────────────────────────
 // Add a comment (admin or the owning encoder), optionally with a file
-// attachment (the reviewer's attachment). multipart/form-data: body, attachment.
+// attachment (the reviewer's attachment). multipart/form-data: body, attachment,
+// and — admin only — section / rowNumber to flag a part of the form for correction.
 
 export async function addComment(req: AuthRequest, res: Response): Promise<void> {
   try {
@@ -507,6 +570,24 @@ export async function addComment(req: AuthRequest, res: Response): Promise<void>
     }
     if (!body && !file) {
       sendError(res, 'A comment or an attachment is required.', 400); return;
+    }
+
+    // Optional flag: which part of the form the comment is about (reviewer only).
+    const rawSection = ((req.body?.section as string | undefined) ?? '').trim();
+    const rawRow     = ((req.body?.rowNumber as string | undefined) ?? '').trim();
+    let section: string | null = null;
+    let rowNumber: number | null = null;
+    if (rawSection) {
+      if (!isAdmin) { sendError(res, 'Only reviewers can flag a section.', 403); return; }
+      if (!isReviewSection(rawSection)) { sendError(res, 'Unknown form section.', 400); return; }
+      section = rawSection;
+      if (rawRow) {
+        const n = Number(rawRow);
+        if (!hasRows(rawSection) || !Number.isInteger(n) || n < 1) {
+          sendError(res, 'Row number must be a whole number of 1 or more, on a section with rows.', 400); return;
+        }
+        rowNumber = n;
+      }
     }
 
     let attachmentUrl: string | null = null;
@@ -526,8 +607,13 @@ export async function addComment(req: AuthRequest, res: Response): Promise<void>
         body:           body || (file ? `Attached ${file.originalname}` : ''),
         attachmentUrl,
         attachmentName,
+        section,
+        rowNumber,
       },
-      include: { author: { select: { id: true, name: true, role: true } } },
+      include: {
+        author:     { select: { id: true, name: true, role: true } },
+        resolvedBy: { select: { id: true, name: true } },
+      },
     });
 
     // Admin commented → notify the encoder.
@@ -547,5 +633,65 @@ export async function addComment(req: AuthRequest, res: Response): Promise<void>
   } catch (err) {
     console.error('Add comment error:', err);
     sendError(res, 'Failed to add comment.', 500);
+  }
+}
+
+// ─── PATCH /api/submissions/:id/comments/:commentId ────────────────────────
+// Reviewer marks a flagged comment resolved (or reopens it). Body: { resolved: boolean }
+
+export async function resolveComment(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (req.user!.role !== 'ADMIN') { sendError(res, 'Only reviewers can resolve comments.', 403); return; }
+    const id        = req.params['id'] as string;
+    const commentId = req.params['commentId'] as string;
+    const resolved  = req.body?.resolved;
+    if (typeof resolved !== 'boolean') { sendError(res, '`resolved` must be true or false.', 400); return; }
+
+    const existing = await prisma.submissionComment.findFirst({ where: { id: commentId, submissionId: id } });
+    if (!existing) { sendError(res, 'Comment not found.', 404); return; }
+
+    const comment = await prisma.submissionComment.update({
+      where: { id: commentId },
+      data: resolved
+        ? { resolvedAt: new Date(), resolvedById: req.user!.id }
+        : { resolvedAt: null, resolvedById: null },
+      include: {
+        author:     { select: { id: true, name: true, role: true } },
+        resolvedBy: { select: { id: true, name: true } },
+      },
+    });
+
+    sendSuccess(res, comment, resolved ? 'Marked as resolved.' : 'Reopened.');
+  } catch (err) {
+    console.error('Resolve comment error:', err);
+    sendError(res, 'Failed to update comment.', 500);
+  }
+}
+
+// ─── POST /api/submissions/evidence ───────────────────────────────────────
+// Encoder uploads proof for an Accomplishment Report row's "Variance or
+// Remarks" (photos, attendance sheets, reports). The file goes to R2 and the
+// returned descriptor is stored inside the row's formData, so this works before
+// the submission itself exists. multipart/form-data: file.
+
+export async function uploadEvidence(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const file = req.file;
+    if (!file) { sendError(res, 'No file uploaded.', 400); return; }
+
+    const safe = file.originalname.replace(/[^\w.\-]+/g, '_');
+    const key  = `submission-evidence/${req.user!.id}/${randomUUID()}-${safe}`;
+    await uploadToR2(key, file.buffer, file.mimetype);
+
+    sendSuccess(res, {
+      url:        getPublicUrl(key),
+      name:       file.originalname,
+      size:       file.size,
+      mimeType:   file.mimetype,
+      uploadedAt: new Date().toISOString(),
+    }, 'File uploaded.');
+  } catch (err) {
+    console.error('Upload evidence error:', err);
+    sendError(res, 'Failed to upload file.', 500);
   }
 }

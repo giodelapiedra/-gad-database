@@ -1,28 +1,27 @@
 import { Request, Response } from 'express';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import fs from 'fs';
-import path from 'path';
 import prisma from '../utils/db';
 import { sendSuccess, sendError } from '../utils/response';
+import { uploadToR2, deleteFromR2, streamFromR2 } from '../utils/s3';
+import { Readable } from 'stream';
 
-const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads', 'hgdg');
+function getPublicUrl(r2Key: string): string {
+  const base = process.env.R2_PUBLIC_URL || '';
+  return `${base}/${r2Key}`;
+}
 
 type FieldDef = {
   id: string;
+  label: string;
   page: number;
   x: number;
   y: number;
   w: number;
   h: number;
   type: 'text' | 'number' | 'radio' | 'checkbox' | 'textarea';
-  label: string;
   options?: string[];
   fontSize?: number;
 };
-
-function pdfPath(r2Key: string) {
-  return path.join(UPLOAD_DIR, path.basename(r2Key));
-}
 
 export async function listTemplates(req: Request, res: Response): Promise<void> {
   try {
@@ -44,7 +43,9 @@ export async function listTemplates(req: Request, res: Response): Promise<void> 
 
 export async function getTemplate(req: Request, res: Response): Promise<void> {
   try {
-    const template = await prisma.hGDGTemplate.findUnique({ where: { id: req.params.id as string } });
+    const template = await prisma.hGDGTemplate.findUnique({
+      where: { id: req.params.id as string },
+    });
     if (!template) { sendError(res, 'Template not found', 404); return; }
     sendSuccess(res, template, 'OK');
   } catch (err) {
@@ -60,16 +61,30 @@ export async function servePdf(req: Request, res: Response): Promise<void> {
       select: { r2Key: true },
     });
     if (!template) { sendError(res, 'Template not found', 404); return; }
-
-    const filePath = pdfPath(template.r2Key);
-    if (!fs.existsSync(filePath)) { sendError(res, 'PDF file not found on server', 404); return; }
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'inline');
-    fs.createReadStream(filePath).pipe(res);
+    sendSuccess(res, { url: getPublicUrl(template.r2Key) }, 'OK');
   } catch (err) {
     console.error('servePdf:', err);
-    sendError(res, 'Failed to serve PDF', 500);
+    sendError(res, 'Failed to get PDF URL', 500);
+  }
+}
+
+// Proxies PDF bytes through the backend — avoids browser CORS on the CDN
+export async function streamPdf(req: Request, res: Response): Promise<void> {
+  try {
+    const template = await prisma.hGDGTemplate.findUnique({
+      where: { id: req.params.id as string },
+      select: { r2Key: true },
+    });
+    if (!template) { sendError(res, 'Template not found', 404); return; }
+
+    const r2Response = await streamFromR2(template.r2Key);
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of r2Response.Body as Readable) chunks.push(chunk);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.send(Buffer.concat(chunks));
+  } catch (err) {
+    console.error('streamPdf:', err);
+    sendError(res, 'Failed to stream PDF', 500);
   }
 }
 
@@ -84,11 +99,9 @@ export async function createTemplate(req: Request, res: Response): Promise<void>
     if (!name || !sector) { sendError(res, 'name and sector are required', 400); return; }
 
     const slug = sector.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const fileName = `${slug}-${Date.now()}.pdf`;
-    const r2Key = `hgdg/${fileName}`;
-    const savePath = path.join(UPLOAD_DIR, fileName);
+    const r2Key = `hgdg/templates/${slug}-${Date.now()}.pdf`;
 
-    fs.writeFileSync(savePath, file.buffer);
+    await uploadToR2(r2Key, file.buffer, 'application/pdf');
 
     const template = await prisma.hGDGTemplate.create({
       data: { name, sector, pullout: pullout || null, r2Key, fieldMap: [] },
@@ -135,9 +148,7 @@ export async function deleteTemplate(req: Request, res: Response): Promise<void>
     const id = req.params.id as string;
     const template = await prisma.hGDGTemplate.findUnique({ where: { id } });
     if (!template) { sendError(res, 'Template not found', 404); return; }
-
-    const filePath = pdfPath(template.r2Key);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    await deleteFromR2(template.r2Key);
     await prisma.hGDGTemplate.delete({ where: { id } });
     sendSuccess(res, null, 'Template deleted');
   } catch (err) {
@@ -156,10 +167,11 @@ export async function generateFilledPdf(req: Request, res: Response): Promise<vo
     const template = await prisma.hGDGTemplate.findUnique({ where: { id: templateId } });
     if (!template) { sendError(res, 'Template not found', 404); return; }
 
-    const filePath = pdfPath(template.r2Key);
-    if (!fs.existsSync(filePath)) { sendError(res, 'PDF file not found on server', 404); return; }
+    const r2Response = await streamFromR2(template.r2Key);
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of r2Response.Body as Readable) chunks.push(chunk);
+    const pdfBytes = Buffer.concat(chunks);
 
-    const pdfBytes = fs.readFileSync(filePath);
     const pdfDoc = await PDFDocument.load(pdfBytes);
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const pages = pdfDoc.getPages();
@@ -172,22 +184,25 @@ export async function generateFilledPdf(req: Request, res: Response): Promise<vo
       if (!page) continue;
 
       const { width: pw, height: ph } = page.getSize();
-      const x = (field.x / 100) * pw;
-      const fieldH = (field.h / 100) * ph;
-      const y = ph - ((field.y / 100) * ph) - fieldH;
       const fontSize = field.fontSize || 9;
 
-      if (field.type === 'radio' || field.type === 'checkbox') {
-        if (value === 'YES' || value === 'true') {
-          page.drawText('X', { x: x + 2, y: y + 2, size: fontSize + 1, font, color: rgb(0, 0, 0) });
+      // field.x, field.y are CSS percentages (top-left origin)
+      // Convert back to PDF space (bottom-left origin)
+      const cellX = (field.x / 100) * pw + 2;
+      const cellW = (field.w / 100) * pw - 4;
+      const cellH = (field.h / 100) * ph;
+      // Text baseline: just below the top edge of the cell
+      const textY = ph - (field.y / 100) * ph - fontSize - 2;
+
+      if (field.type === 'checkbox') {
+        if (value === 'true') {
+          page.drawText('X', { x: cellX, y: textY, size: fontSize + 1, font, color: rgb(0, 0, 0) });
         }
       } else {
-        const maxWidth = (field.w / 100) * pw - 4;
-        let lineY = y + fieldH - fontSize - 2;
-        for (const line of value.split('\n')) {
-          if (lineY < y) break;
-          page.drawText(line, { x: x + 2, y: lineY, size: fontSize, font, color: rgb(0, 0, 0), maxWidth });
-          lineY -= fontSize + 2;
+        for (const [i, line] of value.split('\n').entries()) {
+          const lineY = textY - i * (fontSize + 2);
+          if (lineY < ph - (field.y / 100) * ph - cellH) break;
+          page.drawText(line, { x: cellX, y: lineY, size: fontSize, font, color: rgb(0, 0, 0), maxWidth: cellW });
         }
       }
     }

@@ -24,6 +24,7 @@ import SubmissionViewPage from '@/pages/submissions/SubmissionViewPage';
 import SubmissionEditPage from '@/pages/submissions/SubmissionEditPage';
 import AdminHubPage from '@/pages/AdminHubPage';
 import HGDGPage from '@/pages/hgdg/HGDGPage';
+import TrainingsPage from '@/pages/trainings/TrainingsPage';
 
 // ── Smart root redirect based on the user's role ──────────────────────────
 function RoleRedirect() {
@@ -76,6 +77,7 @@ export default function App() {
                 <Route path="/reports"              element={<ReportsPage />} />
                 <Route path="/upload-history"       element={<UploadHistoryPage />} />
                 <Route path="/resources"            element={<ResourcesPage />} />
+                <Route path="/trainings"            element={<TrainingsPage />} />
                 <Route path="/admin/users"          element={<UsersPage />} />
               </Route>
 

@@ -3,6 +3,8 @@ import ExcelJS from 'exceljs';
 import { z } from 'zod';
 import { AuthRequest } from '../types';
 import { sendSuccess, sendError } from '../utils/response';
+import { gadShareError } from '../utils/gadBudget';
+import { generateCityAR } from '../utils/cityAR.excel';
 
 // ─── Template Definitions ──────────────────────────────────────────────────
 
@@ -1015,218 +1017,14 @@ async function genCityGPB(d: z.infer<typeof cityGPBFormSchema>): Promise<Buffer>
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CITY AR — 10 columns (A–J) — ANNEX E
-// Col: Gender Issue(1) | Objective(2) | Relevant Program(3) | Activity(4) |
-//      Indicator(5) | Actual Results(6) | Approved Budget(7) | Actual Cost(8) |
-//      Variance(9) | Office(10)
+// CITY AR — ANNEX E
+//
+// Rendered from the shipped `CITY AR TEMPLATE.xlsx` rather than hand-built, so
+// the download matches the official form exactly. See utils/cityAR.excel.ts.
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function genCityAR(d: z.infer<typeof cityARFormSchema>): Promise<Buffer> {
-  const wb = new ExcelJS.Workbook();
-  wb.creator = 'GAD Portal';
-  const ws = wb.addWorksheet('AR');
-  const NC = 10;
-
-  ws.columns = [
-    { width: 36 }, // A
-    { width: 24 }, // B
-    { width: 24 }, // C
-    { width: 28 }, // D
-    { width: 28 }, // E
-    { width: 26 }, // F: Actual Results
-    { width: 18 }, // G: Approved Budget
-    { width: 18 }, // H: Actual Cost
-    { width: 18 }, // I: Variance
-    { width: 24 }, // J: Office
-  ];
-
-  let r = 1;
-
-  // Title
-  mergeSet(ws, r, 1, r, NC,
-    `${d.quarter.toUpperCase()} GENDER AND DEVELOPMENT (GAD) ACCOMPLISHMENT REPORT`,
-    { bold: true, size: 13, border: false });
-  ws.getRow(r).height = 22;
-  r++;
-
-  mergeSet(ws, r, 1, r, NC - 1, `FY ${d.fy}`, { size: 12, border: false });
-  setCell(ws, r, NC, 'ANNEX E', { bold: true, hAlign: 'right', border: false });
-  ws.getRow(r).height = 18;
-  r++;
-
-  r++;
-  setCell(ws, r, 1, 'Region:', { bold: true, border: false });
-  setCell(ws, r, 2, d.region,  { border: false });
-  setCell(ws, r, 8, 'Total LGU Budget', { bold: true, border: false });
-  mergeSet(ws, r, 9, r, NC, d.totalLguBudget, { hAlign: 'right', border: false, wrapText: false });
-  (ws.getCell(r, 9) as ExcelJS.Cell).numFmt = '#,##0.00';
-  (ws.getCell(r, 9) as ExcelJS.Cell).border = { bottom: THIN };
-  r++;
-
-  setCell(ws, r, 1, 'Province:', { bold: true, border: false });
-  setCell(ws, r, 2, d.province,  { border: false });
-  setCell(ws, r, 8, 'Total GAD Budget', { bold: true, border: false });
-  mergeSet(ws, r, 9, r, NC, d.totalGadBudget, { hAlign: 'right', border: false, wrapText: false });
-  (ws.getCell(r, 9) as ExcelJS.Cell).numFmt = '#,##0.00';
-  (ws.getCell(r, 9) as ExcelJS.Cell).border = { bottom: THIN };
-  r++;
-
-  setCell(ws, r, 1, 'City/ Municipality:', { bold: true, border: false });
-  setCell(ws, r, 2, d.cityMunicipality,    { border: false });
-  r++;
-
-  if (d.officeName) {
-    setCell(ws, r, 1, 'Office/Department:', { bold: true, border: false });
-    setCell(ws, r, 2, d.officeName, { border: false });
-    r++;
-  }
-
-  r++;
-
-  // ── Two-row column header ───────────────────────────────────────────────
-  const hRow1 = r;
-  mergeSet(ws, hRow1, 1,  hRow1 + 1, 1,  'Gender Issue or GAD Mandate\n(1)',        { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10 });
-  mergeSet(ws, hRow1, 2,  hRow1 + 1, 2,  'GAD Objective\n(2)',                      { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10 });
-  mergeSet(ws, hRow1, 3,  hRow1 + 1, 3,  'Relevant LGU Program or Project\n(3)',    { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10 });
-  mergeSet(ws, hRow1, 4,  hRow1 + 1, 4,  'GAD Activity\n(4)',                       { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10 });
-  mergeSet(ws, hRow1, 5,  hRow1 + 1, 5,  'Performance Indicator and Target\n(5)',   { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10 });
-  mergeSet(ws, hRow1, 6,  hRow1 + 1, 6,  'Actual Results\n(6)',                     { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10 });
-  // G-I span = "GAD Budget"
-  mergeSet(ws, hRow1, 7,  hRow1, 9,      'GAD Budget',                              { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10 });
-  mergeSet(ws, hRow1, 10, hRow1 + 1, 10, 'Lead or Responsible Office\n(10)',        { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10 });
-  ws.getRow(hRow1).height = 30;
-  r++;
-
-  headerFill(ws, r, 1, NC);
-  setCell(ws, r, 7, 'Approved\nBudget\n(7)', { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10, hAlign: 'center' });
-  setCell(ws, r, 8, 'Actual\nCost\n(8)',     { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10, hAlign: 'center' });
-  setCell(ws, r, 9, 'Variance\n(9)',         { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10, hAlign: 'center' });
-  ws.getRow(r).height = 28;
-  r++;
-
-  const addCityARRows = (rows: z.infer<typeof cityARRowSchema>[]) => {
-    const src = rows.length > 0 ? rows : [null];
-    for (const row of src) {
-      setCell(ws, r, 1,  row?.gadIssue        ?? '', { wrapText: true });
-      setCell(ws, r, 2,  row?.gadObjective    ?? '', { wrapText: true });
-      setCell(ws, r, 3,  row?.relevantProgram ?? '', { wrapText: true });
-      setCell(ws, r, 4,  row?.activity        ?? '', { wrapText: true });
-      setCell(ws, r, 5,  row?.indicator       ?? '', { wrapText: true });
-      setCell(ws, r, 6,  row?.actualResults   ?? '', { wrapText: true });
-      numCell(ws, r, 7,  row?.approvedBudget  ?? 0);
-      numCell(ws, r, 8,  row?.actualCost      ?? 0);
-      setCell(ws, r, 9,  row?.variance        ?? '', { wrapText: true });
-      setCell(ws, r, 10, row?.responsibleOffice ?? '', { wrapText: true });
-      ws.getRow(r).height = 45;
-      r++;
-    }
-  };
-
-  // CLIENT-FOCUSED
-  mergeSet(ws, r, 1, r, NC, 'CLIENT-FOCUSED', { fill: CLR.OLIVE, fontColor: CLR.WHITE, bold: true, hAlign: 'left' });
-  ws.getRow(r).height = 18;
-  r++;
-  addCityARRows(d.clientFocused);
-
-  const cfS = sumAR(d.clientFocused);
-  mergeSet(ws, r, 1, r, 6, 'SUB TOTAL A', { fill: CLR.OLIVE, fontColor: CLR.WHITE, bold: true, hAlign: 'left' });
-  numCell(ws, r, 7, cfS.approved, CLR.OLIVE);
-  numCell(ws, r, 8, cfS.actual,   CLR.OLIVE);
-  setCell(ws, r, 9,  '', { fill: CLR.OLIVE });
-  setCell(ws, r, 10, '', { fill: CLR.OLIVE });
-  ws.getRow(r).height = 18;
-  r++;
-
-  // ORGANIZATION FOCUSED
-  mergeSet(ws, r, 1, r, NC, 'ORGANIZATION FOCUSED', { fill: CLR.OLIVE, fontColor: CLR.WHITE, bold: true, hAlign: 'left' });
-  ws.getRow(r).height = 18;
-  r++;
-  addCityARRows(d.organizationFocused);
-
-  const ofS = sumAR(d.organizationFocused);
-  mergeSet(ws, r, 1, r, 6, 'SUB TOTAL B', { fill: CLR.OLIVE, fontColor: CLR.WHITE, bold: true, hAlign: 'left' });
-  numCell(ws, r, 7, ofS.approved, CLR.OLIVE);
-  numCell(ws, r, 8, ofS.actual,   CLR.OLIVE);
-  setCell(ws, r, 9,  '', { fill: CLR.OLIVE });
-  setCell(ws, r, 10, '', { fill: CLR.OLIVE });
-  ws.getRow(r).height = 18;
-  r++;
-
-  // ATTRIBUTED PROGRAMS
-  mergeSet(ws, r, 1, r, NC, 'ATTRIBUTED PROGRAMS', { fill: CLR.OLIVE, fontColor: CLR.WHITE, bold: true, hAlign: 'left' });
-  ws.getRow(r).height = 18;
-  r++;
-
-  mergeSet(ws, r, 1, r, 4, 'Title of LGU Program or Project',
-    { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10 });
-  setCell(ws, r, 5, 'HGDG Score\n(9)',
-    { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10, hAlign: 'center' });
-  mergeSet(ws, r, 6, r, 7, 'Total Annual Program/\nProject Budget\n(10)',
-    { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10 });
-  mergeSet(ws, r, 8, r, 9, 'GAD Attributed Budget\n(11)',
-    { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10 });
-  setCell(ws, r, 10, 'Lead or\nResponsible\nOffice\n(12)',
-    { fill: CLR.BLACK, fontColor: CLR.WHITE, bold: true, size: 10, hAlign: 'center' });
-  ws.getRow(r).height = 40;
-  r++;
-
-  const attrAR = d.attributedPrograms.length > 0 ? d.attributedPrograms : [null];
-  for (const row of attrAR) {
-    mergeSet(ws, r, 1, r, 4, row?.projectTitle ?? '', { hAlign: 'left', border: true });
-    numCell(ws, r, 5, row?.hgdgScore ?? 0);
-    mergeSet(ws, r, 6, r, 7, row ? row.totalBudget : 0, { hAlign: 'right', border: true, wrapText: false });
-    (ws.getCell(r, 6) as ExcelJS.Cell).numFmt = '#,##0.00';
-    mergeSet(ws, r, 8, r, 9, row ? row.gadAttributedBudget : 0, { hAlign: 'right', border: true, wrapText: false });
-    (ws.getCell(r, 8) as ExcelJS.Cell).numFmt = '#,##0.00';
-    setCell(ws, r, 10, row?.responsibleOffice ?? '', { wrapText: true });
-    ws.getRow(r).height = 30;
-    r++;
-  }
-
-  const attrTotal = d.attributedPrograms.reduce((s, x) => s + x.totalBudget, 0);
-  const attrGad   = d.attributedPrograms.reduce((s, x) => s + x.gadAttributedBudget, 0);
-  mergeSet(ws, r, 1, r, 4, 'SUB TOTAL C', { fill: CLR.OLIVE, fontColor: CLR.WHITE, bold: true, hAlign: 'left' });
-  setCell(ws, r, 5, '', { fill: CLR.OLIVE });
-  mergeSet(ws, r, 6, r, 7, attrTotal, { fill: CLR.OLIVE, fontColor: CLR.WHITE, bold: true, hAlign: 'right', wrapText: false });
-  (ws.getCell(r, 6) as ExcelJS.Cell).numFmt = '#,##0.00';
-  mergeSet(ws, r, 8, r, 9, attrGad, { fill: CLR.OLIVE, fontColor: CLR.WHITE, bold: true, hAlign: 'right', wrapText: false });
-  (ws.getCell(r, 8) as ExcelJS.Cell).numFmt = '#,##0.00';
-  setCell(ws, r, 10, '', { fill: CLR.OLIVE });
-  ws.getRow(r).height = 18;
-  r++;
-
-  // GRAND TOTAL
-  mergeSet(ws, r, 1, r, 6, 'GRAND TOTAL (A+B+C)',
-    { fill: CLR.YELLOW, fontColor: CLR.BLACK, bold: true, hAlign: 'left' });
-  numCell(ws, r, 7, cfS.approved + ofS.approved + attrGad, CLR.YELLOW);
-  numCell(ws, r, 8, cfS.actual   + ofS.actual,             CLR.YELLOW);
-  setCell(ws, r, 9,  '', { fill: CLR.YELLOW });
-  setCell(ws, r, 10, '', { fill: CLR.YELLOW });
-  ws.getRow(r).height = 20;
-  r++;
-
-  // Signatory
-  sectionRow(ws, r, 1, NC, CLR.BLUE);
-  setCell(ws, r, 1, 'Prepared by:',  { bold: true, fill: CLR.BLUE, fontColor: CLR.BLACK });
-  setCell(ws, r, 4, 'Approved by:',  { bold: true, fill: CLR.BLUE, fontColor: CLR.BLACK });
-  setCell(ws, r, 8, 'Date:',         { bold: true, fill: CLR.BLUE, fontColor: CLR.BLACK });
-  ws.getRow(r).height = 18;
-  r++;
-
-  sectionRow(ws, r, 1, NC, CLR.BLUE);
-  setCell(ws, r, 1, d.preparedBy, { fill: CLR.BLUE, fontColor: CLR.BLACK });
-  setCell(ws, r, 4, d.approvedBy, { fill: CLR.BLUE, fontColor: CLR.BLACK });
-  setCell(ws, r, 8, d.date,       { fill: CLR.BLUE, fontColor: CLR.BLACK });
-  ws.getRow(r).height = 22;
-  r++;
-
-  sectionRow(ws, r, 1, NC, CLR.BLUE);
-  setCell(ws, r, 1, 'GAD Focal Person / TWG Member', { fill: CLR.BLUE, fontColor: CLR.BLACK });
-  setCell(ws, r, 4, 'Department Head',               { fill: CLR.BLUE, fontColor: CLR.BLACK });
-  setCell(ws, r, 8, 'DD/MM/YEAR',                    { fill: CLR.BLUE, fontColor: CLR.BLACK });
-  ws.getRow(r).height = 18;
-
-  return wb.xlsx.writeBuffer() as unknown as Promise<Buffer>;
+  return generateCityAR(d);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1242,6 +1040,9 @@ export async function generateTemplate(req: AuthRequest, res: Response): Promise
     const { type } = req.params as { type: TemplateId };
     const def = TEMPLATE_TYPES.find((t) => t.id === type);
     if (!def) { sendError(res, 'Template type not found.', 404); return; }
+
+    const budgetErr = gadShareError(type, req.body ?? {});
+    if (budgetErr) { sendError(res, budgetErr); return; }
 
     let buffer: Buffer;
     let fileName: string;

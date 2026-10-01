@@ -8,6 +8,7 @@ export interface UserRecord {
   role: 'ADMIN' | 'ENCODER';
   isActive: boolean;
   departmentId: string | null;
+  barangay: string | null;
   department: { id: string; name: string; code: string } | null;
   createdAt: string;
   updatedAt: string;
@@ -19,6 +20,7 @@ export interface CreateUserPayload {
   password: string;
   role: 'ADMIN' | 'ENCODER';
   departmentId?: string;
+  barangay?: string;
 }
 
 export interface UpdateUserPayload {
@@ -27,6 +29,7 @@ export interface UpdateUserPayload {
   isActive?: boolean;
   password?: string;
   departmentId?: string | null;
+  barangay?: string | null;
 }
 
 // ─── Queries ─────────────────────────────────────────────────────────────
