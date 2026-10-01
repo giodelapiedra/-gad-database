@@ -125,6 +125,12 @@ export async function deleteTraining(req: Request, res: Response): Promise<void>
   }
 }
 
+/** Public shape: admin-only fields stay off the public API. */
+function toPublicTraining(t: Parameters<typeof serializeTraining>[0], today: string) {
+  const { isPublished: _p, createdAt: _c, updatedAt: _u, ...pub } = serializeTraining(t, today);
+  return pub;
+}
+
 // ─── GET /api/public/trainings (public website) ──────────────────────────
 // Only published trainings. Upcoming/ongoing first (soonest first), then past (most recent first).
 
@@ -135,11 +141,7 @@ export async function getPublicTrainings(_req: Request, res: Response): Promise<
       orderBy: { startDate: 'asc' },
     });
     const today = todayInManila();
-    const items = trainings.map((t) => {
-      // Admin-only fields stay off the public API.
-      const { isPublished: _p, createdAt: _c, updatedAt: _u, ...pub } = serializeTraining(t, today);
-      return pub;
-    });
+    const items = trainings.map((t) => toPublicTraining(t, today));
     const active = items.filter((t) => t.status !== 'completed');
     const past = items.filter((t) => t.status === 'completed').reverse();
 
@@ -147,6 +149,24 @@ export async function getPublicTrainings(_req: Request, res: Response): Promise<
     sendSuccess(res, [...active, ...past], 'Trainings retrieved');
   } catch (err) {
     console.error('getPublicTrainings error:', err);
+    sendError(res, 'Something went wrong.', 500);
+  }
+}
+
+// ─── GET /api/public/trainings/:id (public website detail / share page) ──
+// Drafts are indistinguishable from missing records to the public.
+
+export async function getPublicTraining(req: Request, res: Response): Promise<void> {
+  try {
+    const training = await prisma.training.findFirst({
+      where: { id: req.params.id as string, isPublished: true },
+    });
+    if (!training) { sendError(res, 'Training not found.', 404); return; }
+
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    sendSuccess(res, toPublicTraining(training, todayInManila()), 'Training retrieved');
+  } catch (err) {
+    console.error('getPublicTraining error:', err);
     sendError(res, 'Something went wrong.', 500);
   }
 }
