@@ -21,3 +21,11 @@ export function isReviewSection(v: string): v is ReviewSection {
 export function hasRows(section: ReviewSection): boolean {
   return ROW_SECTIONS.includes(section);
 }
+
+/**
+ * A column of the form a comment may point at — a form-data key such as
+ * "indicator", "mooe" or "preparedBy". Labels live on the client.
+ */
+export function isFieldKey(v: string): boolean {
+  return /^[A-Za-z]{1,40}$/.test(v);
+}

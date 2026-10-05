@@ -1,6 +1,9 @@
 import * as React from 'react';
 import { PlusIcon, Trash2Icon, LockIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { fieldAnchor } from '@/lib/reviewSections';
+import { useFieldFlags, useFlagScope } from '@/hooks/useReviewFlags';
+import { FieldNotes, CellCommentButton } from '@/components/review/ReviewFlags';
 
 /**
  * Spreadsheet-style form grid.
@@ -20,6 +23,8 @@ import { cn } from '@/lib/utils';
 export interface SheetColumn {
   /** Header text, e.g. "Gender Issue or GAD Mandate". */
   label: string;
+  /** Form-data key the column edits — lets a reviewer's comment point at this cell. */
+  key?: string;
   /** The template's column number, rendered under the label. */
   num?: number;
   /** Rendered width in px — keep these proportional to the Excel widths. */
@@ -332,9 +337,15 @@ export function SheetSlot({
   col: SheetColumn;
   children: React.ReactNode;
 }) {
+  const flags = useFieldFlags(col.key);
+  const anchor = useCellAnchor(col.key);
   return (
-    <div className="shrink-0 border-r border-[#E4E4E7] p-1.5" style={{ width: col.width }}>
+    <div id={anchor}
+      className={cn('group/flag relative shrink-0 scroll-mt-24 border-r border-[#E4E4E7] p-1.5', flags.length && 'bg-red-50 ring-2 ring-inset ring-red-500')}
+      style={{ width: col.width }}>
       {children}
+      <FieldNotes flags={flags} className="px-0.5 pt-1" />
+      {col.key && <CellCommentButton field={col.key} label={col.label} />}
     </div>
   );
 }
@@ -373,13 +384,18 @@ export function SheetCell({
   const align = col.align ?? (numeric ? 'right' : 'left');
   const shown = numeric ? (value === 0 || value === '' ? '' : String(value)) : String(value ?? '');
   const noEdit = readOnly || locked;
+  const flags = useFieldFlags(col.key);
+  const anchor = useCellAnchor(col.key);
+  const flagged = flags.length > 0;
 
   return (
     <div
+      id={anchor}
       className={cn(
-        'relative shrink-0 border-r border-[#E4E4E7]',
+        'group/flag relative flex shrink-0 scroll-mt-24 flex-col border-r border-[#E4E4E7]',
         col.sticky && 'sticky z-10 bg-white group-hover:bg-[#FAFAFA]',
-        locked && 'bg-[#F1F5F9] group-hover:bg-[#EEF2F7]'
+        locked && 'bg-[#F1F5F9] group-hover:bg-[#EEF2F7]',
+        flagged && 'bg-red-50 ring-2 ring-inset ring-red-500 group-hover:bg-red-50'
       )}
       style={{
         width: col.width,
@@ -388,7 +404,7 @@ export function SheetCell({
       title={locked ? 'Copied from the GAD Plan and Budget — edit it there, then sync.' : undefined}
     >
       {locked && <LockIcon aria-hidden className="absolute right-1.5 top-1.5 size-3 text-[#94A3B8]" />}
-      <div className="grid h-full">
+      <div className="grid flex-1">
         <span
           aria-hidden
           className={cn(
@@ -415,8 +431,16 @@ export function SheetCell({
           )}
         />
       </div>
+      <FieldNotes flags={flags} />
+      {col.key && <CellCommentButton field={col.key} label={col.label} value={shown} />}
     </div>
   );
+}
+
+/** DOM id of a cell carrying a column key, inside a flag scope (section / row). */
+function useCellAnchor(key: string | undefined): string | undefined {
+  const scope = useFlagScope();
+  return key && scope ? fieldAnchor(scope.section, scope.row, key) : undefined;
 }
 
 /** Digits-only parse used by the numeric cells. Blank / junk becomes 0. */

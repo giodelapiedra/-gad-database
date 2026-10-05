@@ -6,7 +6,7 @@ import { sendSuccess, sendError } from '../utils/response';
 import { applyFixedLocation } from '../utils/location';
 import { gadShareError } from '../utils/gadBudget';
 import { noEntriesError } from '../utils/formEntries';
-import { isReviewSection, hasRows } from '../utils/reviewSections';
+import { isReviewSection, hasRows, isFieldKey } from '../utils/reviewSections';
 import prisma from '../utils/db';
 import { buildExcelForType } from './template.controller';
 import { buildPdfForType } from '../utils/pdf';
@@ -583,8 +583,10 @@ export async function addComment(req: AuthRequest, res: Response): Promise<void>
     // Optional flag: which part of the form the comment is about (reviewer only).
     const rawSection = ((req.body?.section as string | undefined) ?? '').trim();
     const rawRow     = ((req.body?.rowNumber as string | undefined) ?? '').trim();
+    const rawField   = ((req.body?.field as string | undefined) ?? '').trim();
     let section: string | null = null;
     let rowNumber: number | null = null;
+    let field: string | null = null;
     if (rawSection) {
       if (!isAdmin) { sendError(res, 'Only reviewers can flag a section.', 403); return; }
       if (!isReviewSection(rawSection)) { sendError(res, 'Unknown form section.', 400); return; }
@@ -595,6 +597,10 @@ export async function addComment(req: AuthRequest, res: Response): Promise<void>
           sendError(res, 'Row number must be a whole number of 1 or more, on a section with rows.', 400); return;
         }
         rowNumber = n;
+      }
+      if (rawField) {
+        if (!isFieldKey(rawField)) { sendError(res, 'Unknown form column.', 400); return; }
+        field = rawField;
       }
     }
 
@@ -617,6 +623,7 @@ export async function addComment(req: AuthRequest, res: Response): Promise<void>
         attachmentName,
         section,
         rowNumber,
+        field,
       },
       include: {
         author:     { select: { id: true, name: true, role: true } },

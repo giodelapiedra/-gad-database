@@ -1,5 +1,5 @@
 import { gpbKind, type BrgyGPBFormData, type BrgyGPBRow } from '@/hooks/useTemplates';
-import { peso, HeaderInfo, SectionBanner, AttrRows, RowNumber } from './ViewerShared';
+import { peso, HeaderInfo, SectionBanner, AttrRows, RowNumber, ViewField, Signatories } from './ViewerShared';
 import { GadBudgetShare } from '@/components/forms/GadBudgetShare';
 import { FlaggedSection, FlaggedRow } from '@/components/review/ReviewFlags';
 
@@ -29,27 +29,14 @@ function BrgyGPBDataRows({ rows, section }: { rows: { row: BrgyGPBRow; i: number
           <div className="rounded-md border border-[#EBEBEB] bg-[#FAFAFA] p-3">
             <RowNumber n={i + 1} />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {[
-                { label: 'Gender Issue or GAD Mandate (1)', value: row.gadIssue },
-                { label: 'GAD Activity / PPA (4)',          value: row.activity },
-                { label: 'Performance Indicator (5)',       value: row.indicator },
-              ].map(({ label, value }) => (
-                <div key={label}>
-                  <p className="text-[10px] font-medium text-[#71717A]">{label}</p>
-                  <p className="mt-0.5 whitespace-pre-wrap text-[12px] text-[#09090B]">{value || '—'}</p>
-                </div>
-              ))}
-              <div>
-                <p className="text-[10px] font-medium text-[#71717A]">Budget (MOOE / PS / CO)</p>
-                <p className="mt-0.5 text-[12px] tabular-nums text-[#09090B]">
-                  ₱{peso(row.mooe)} / ₱{peso(row.ps)} / ₱{peso(row.co)}
-                </p>
-                <p className="text-[11px] text-[#71717A]">Total: ₱{peso(row.mooe + row.ps + row.co)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-medium text-[#71717A]">Responsible Office (9)</p>
-                <p className="mt-0.5 text-[12px] text-[#09090B]">{row.responsibleOffice || '—'}</p>
-              </div>
+              <ViewField field="gadIssue" label="Gender Issue or GAD Mandate (1)" value={row.gadIssue} />
+              <ViewField field="activity" label="GAD Activity / PPA (4)" value={row.activity} />
+              <ViewField field="indicator" label="Performance Indicator (5)" value={row.indicator} />
+              <ViewField field="mooe" label="MOOE (6)" value={`₱${peso(row.mooe)}`} />
+              <ViewField field="ps" label="PS (7)" value={`₱${peso(row.ps)}`} />
+              <ViewField field="co" label="CO (8)" value={`₱${peso(row.co)}`} />
+              <ViewField field="responsibleOffice" label="Responsible Office (9)" value={row.responsibleOffice} />
+              <ViewField label="Budget Total" value={`₱${peso(row.mooe + row.ps + row.co)}`} />
             </div>
           </div>
         </FlaggedRow>
@@ -71,13 +58,13 @@ export function BrgyGPBView({ d }: { d: BrgyGPBFormData }) {
             Barangay Annual GAD Plan and Budget (GPB)
           </p>
           <HeaderInfo items={[
-            { label: 'Barangay',          value: d.barangay },
-            { label: 'City', value: d.cityMunicipality },
-            { label: 'Province',          value: d.province },
-            { label: 'Region',            value: d.region },
-            { label: 'Calendar Year (CY)',value: d.cy },
-            { label: 'Total Brgy Budget', value: d.totalBrgyBudget ? `₱${peso(d.totalBrgyBudget)}` : '' },
-            { label: 'Total GAD Budget',  value: d.totalGadBudget  ? `₱${peso(d.totalGadBudget)}`  : '' },
+            { label: 'Barangay',          value: d.barangay, field: 'barangay' },
+            { label: 'City', value: d.cityMunicipality, field: 'cityMunicipality' },
+            { label: 'Province',          value: d.province, field: 'province' },
+            { label: 'Region',            value: d.region, field: 'region' },
+            { label: 'Calendar Year (CY)',value: d.cy, field: 'cy' },
+            { label: 'Total Brgy Budget', value: d.totalBrgyBudget ? `₱${peso(d.totalBrgyBudget)}` : '', field: 'totalBrgyBudget' },
+            { label: 'Total GAD Budget',  value: d.totalGadBudget  ? `₱${peso(d.totalGadBudget)}`  : '', field: 'totalGadBudget' },
           ]} />
           <div className="mt-4 sm:max-w-xs">
             <GadBudgetShare totalBudget={d.totalBrgyBudget} gadBudget={d.totalGadBudget} budgetLabel="Barangay" />
@@ -120,20 +107,10 @@ export function BrgyGPBView({ d }: { d: BrgyGPBFormData }) {
       </div>
 
       <FlaggedSection section="signatories">
-        <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-          <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {[
-              { label: 'Prepared by (Barangay GAD Focal)', value: d.preparedBy },
-              { label: 'Approved by (Punong Barangay)',    value: d.approvedBy },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-md border border-[#EBEBEB] px-3 py-2">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-[#71717A]">{label}</p>
-                <p className="mt-0.5 text-[13px] text-[#09090B]">{value || '—'}</p>
-              </div>
-            ))}
-          </div>
-        </div>
+        <Signatories items={[
+          { label: 'Prepared by (Barangay GAD Focal)', value: d.preparedBy, field: 'preparedBy' },
+          { label: 'Approved by (Punong Barangay)',    value: d.approvedBy, field: 'approvedBy' },
+        ]} />
       </FlaggedSection>
     </div>
   );

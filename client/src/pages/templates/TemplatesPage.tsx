@@ -83,7 +83,7 @@ import { importBrgyGpb, importCityGpb, plannedLocked } from '@/lib/gpbToAr';
 import { validateGadShare } from '@/lib/gadBudget';
 import { LockedField, BarangayField } from '@/components/forms/LocationFields';
 import { withFixedLocation } from '@/lib/location';
-import { FlaggedSection, FlaggedRow } from '@/components/review/ReviewFlags';
+import { FlaggedSection, FlaggedRow, FlaggableField } from '@/components/review/ReviewFlags';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -100,8 +100,13 @@ function N({ value, onChange, className = '' }: {
   );
 }
 
-function F({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
-  return (
+function F({ label, required, field, children }: {
+  label: string; required?: boolean;
+  /** Form-data key — the field turns red with the reviewer's comment when flagged. */
+  field?: string;
+  children: React.ReactNode;
+}) {
+  const body = (
     <div className="space-y-1">
       <Label className="text-[11px] font-medium text-[#52525B]">
         {label}{required && <span className="ml-0.5 text-red-500">*</span>}
@@ -109,6 +114,7 @@ function F({ label, required, children }: { label: string; required?: boolean; c
       {children}
     </div>
   );
+  return field ? <FlaggableField field={field} label={label}>{body}</FlaggableField> : body;
 }
 
 // ─── Template Card ────────────────────────────────────────────────────────
@@ -461,56 +467,56 @@ function AttributedSheet({
 
 // Barangay GPB prints (1), (4), (5)… — it has no objective / program columns.
 const BRGY_GPB_COLS: SheetColumn[] = [
-  { label: 'Gender Issue or GAD Mandate', num: 1, width: 280, required: true, sticky: true },
-  { label: 'GAD Activity / PPA',          num: 4, width: 250, required: true },
-  { label: 'Performance Indicator & Target', num: 5, width: 230 },
-  { label: 'MOOE', num: 6, width: 130, align: 'right', group: 'GAD Budget' },
-  { label: 'PS',   num: 7, width: 130, align: 'right', group: 'GAD Budget' },
-  { label: 'CO',   num: 8, width: 130, align: 'right', group: 'GAD Budget' },
-  { label: 'Responsible Office', num: 9, width: 200 },
+  { key: 'gadIssue', label: 'Gender Issue or GAD Mandate', num: 1, width: 280, required: true, sticky: true },
+  { key: 'activity', label: 'GAD Activity / PPA',          num: 4, width: 250, required: true },
+  { key: 'indicator', label: 'Performance Indicator & Target', num: 5, width: 230 },
+  { key: 'mooe', label: 'MOOE', num: 6, width: 130, align: 'right', group: 'GAD Budget' },
+  { key: 'ps', label: 'PS',   num: 7, width: 130, align: 'right', group: 'GAD Budget' },
+  { key: 'co', label: 'CO',   num: 8, width: 130, align: 'right', group: 'GAD Budget' },
+  { key: 'responsibleOffice', label: 'Responsible Office', num: 9, width: 200 },
 ];
 const BRGY_GPB_ATTR_COLS: SheetColumn[] = [
-  { label: 'Title of Project / Program', width: 300, sticky: true },
-  { label: 'HGDG Score', width: 130, align: 'right' },
-  { label: 'Total Annual Budget', width: 180, align: 'right' },
-  { label: 'GAD Attributed Budget', width: 180, align: 'right' },
-  { label: 'Variance or Remarks', width: 240 },
+  { key: 'projectTitle', label: 'Title of Project / Program', width: 300, sticky: true },
+  { key: 'hgdgScore', label: 'HGDG Score', width: 130, align: 'right' },
+  { key: 'totalBudget', label: 'Total Annual Budget', width: 180, align: 'right' },
+  { key: 'gadAttributedBudget', label: 'GAD Attributed Budget', width: 180, align: 'right' },
+  { key: 'varianceRemarks', label: 'Variance or Remarks', width: 240 },
 ];
 
 const BRGY_AR_COLS: SheetColumn[] = [
-  { label: 'Gender Issue or GAD Mandate', num: 1, width: 250, required: true, sticky: true },
-  { label: 'GAD Program / Project / Activity (PPA)', num: 2, width: 230 },
-  { label: 'Performance Target and Indicator', num: 3, width: 220 },
-  { label: 'Accomplishments', num: 4, width: 240 },
-  { label: 'Approved GAD Budget', num: 5, width: 150, align: 'right' },
-  { label: 'Actual GAD Cost or Expenditure', num: 6, width: 150, align: 'right' },
-  { label: 'Variance or Remarks · with proof', num: 7, width: 260 },
+  { key: 'gadIssue', label: 'Gender Issue or GAD Mandate', num: 1, width: 250, required: true, sticky: true },
+  { key: 'ppa', label: 'GAD Program / Project / Activity (PPA)', num: 2, width: 230 },
+  { key: 'indicator', label: 'Performance Target and Indicator', num: 3, width: 220 },
+  { key: 'accomplishments', label: 'Accomplishments', num: 4, width: 240 },
+  { key: 'approvedBudget', label: 'Approved GAD Budget', num: 5, width: 150, align: 'right' },
+  { key: 'actualCost', label: 'Actual GAD Cost or Expenditure', num: 6, width: 150, align: 'right' },
+  { key: 'variance', label: 'Variance or Remarks · with proof', num: 7, width: 260 },
 ];
 const BRGY_AR_ATTR_COLS: SheetColumn[] = [
-  { label: 'Title of Barangay Project', num: 8, width: 300, sticky: true },
-  { label: 'HGDG PIMME / FIMME Score', num: 9, width: 150, align: 'right' },
-  { label: 'Total Annual Program / Project Cost or Expenditure', num: 10, width: 200, align: 'right' },
-  { label: 'GAD Attributed Project / Program Cost or Expenditure', num: 11, width: 200, align: 'right' },
-  { label: 'Variance or Remarks', num: 12, width: 240 },
+  { key: 'projectTitle', label: 'Title of Barangay Project', num: 8, width: 300, sticky: true },
+  { key: 'hgdgScore', label: 'HGDG PIMME / FIMME Score', num: 9, width: 150, align: 'right' },
+  { key: 'totalBudget', label: 'Total Annual Program / Project Cost or Expenditure', num: 10, width: 200, align: 'right' },
+  { key: 'gadAttributedBudget', label: 'GAD Attributed Project / Program Cost or Expenditure', num: 11, width: 200, align: 'right' },
+  { key: 'varianceRemarks', label: 'Variance or Remarks', num: 12, width: 240 },
 ];
 
 const CITY_GPB_COLS: SheetColumn[] = [
-  { label: 'Gender Issue or GAD Mandate', num: 1, width: 250, required: true, sticky: true },
-  { label: 'GAD Objective', num: 2, width: 180 },
-  { label: 'Relevant LGU Program / Project', num: 3, width: 180 },
-  { label: 'GAD Activity', num: 4, width: 190, required: true },
-  { label: 'Performance Indicator & Target', num: 5, width: 200 },
-  { label: 'MOOE', num: 6, width: 130, align: 'right', group: 'GAD Budget' },
-  { label: 'PS',   num: 7, width: 130, align: 'right', group: 'GAD Budget' },
-  { label: 'CO',   num: 8, width: 130, align: 'right', group: 'GAD Budget' },
-  { label: 'Lead or Responsible Office', num: 9, width: 180 },
+  { key: 'gadIssue', label: 'Gender Issue or GAD Mandate', num: 1, width: 250, required: true, sticky: true },
+  { key: 'gadObjective', label: 'GAD Objective', num: 2, width: 180 },
+  { key: 'relevantProgram', label: 'Relevant LGU Program / Project', num: 3, width: 180 },
+  { key: 'activity', label: 'GAD Activity', num: 4, width: 190, required: true },
+  { key: 'indicator', label: 'Performance Indicator & Target', num: 5, width: 200 },
+  { key: 'mooe', label: 'MOOE', num: 6, width: 130, align: 'right', group: 'GAD Budget' },
+  { key: 'ps', label: 'PS',   num: 7, width: 130, align: 'right', group: 'GAD Budget' },
+  { key: 'co', label: 'CO',   num: 8, width: 130, align: 'right', group: 'GAD Budget' },
+  { key: 'responsibleOffice', label: 'Lead or Responsible Office', num: 9, width: 180 },
 ];
 const CITY_GPB_ATTR_COLS: SheetColumn[] = [
-  { label: 'Title of LGU Program or Project', num: 10, width: 300, sticky: true },
-  { label: 'Funding Facility / Generic Checklist Score', num: 11, width: 180, align: 'right' },
-  { label: 'Total Annual Program / Project Budget', num: 12, width: 200, align: 'right' },
-  { label: 'GAD Attributed Program / Project Budget', num: 13, width: 200, align: 'right' },
-  { label: 'Lead or Responsible Office', num: 14, width: 190 },
+  { key: 'projectTitle', label: 'Title of LGU Program or Project', num: 10, width: 300, sticky: true },
+  { key: 'hgdgScore', label: 'Funding Facility / Generic Checklist Score', num: 11, width: 180, align: 'right' },
+  { key: 'totalBudget', label: 'Total Annual Program / Project Budget', num: 12, width: 200, align: 'right' },
+  { key: 'gadAttributedBudget', label: 'GAD Attributed Program / Project Budget', num: 13, width: 200, align: 'right' },
+  { key: 'responsibleOffice', label: 'Lead or Responsible Office', num: 14, width: 190 },
 ];
 
 // ─── Barangay GPB Form ────────────────────────────────────────────────────
@@ -689,18 +695,18 @@ export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit
           <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Header Information</p>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
             <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-3">
-              <BarangayField value={d.barangay} onChange={(v) => upd('barangay', v)} locked={!!user?.barangay} />
-              <LockedField label="City" value={d.cityMunicipality} />
-              <LockedField label="Province" value={d.province} />
-              <LockedField label="Region" value={d.region} />
-              <F label="Calendar Year (CY)" required>
+              <FlaggableField field="barangay"><BarangayField value={d.barangay} onChange={(v) => upd('barangay', v)} locked={!!user?.barangay} /></FlaggableField>
+              <FlaggableField field="cityMunicipality"><LockedField label="City" value={d.cityMunicipality} /></FlaggableField>
+              <FlaggableField field="province"><LockedField label="Province" value={d.province} /></FlaggableField>
+              <FlaggableField field="region"><LockedField label="Region" value={d.region} /></FlaggableField>
+              <F label="Calendar Year (CY)" field="cy" required>
                 <Input type="number" value={d.cy} onChange={(e) => upd('cy', Number(e.target.value))}
                   className="text-[12px]" />
               </F>
-              <F label="Total Barangay Budget (₱)">
+              <F label="Total Barangay Budget (₱)" field="totalBrgyBudget">
                 <N value={d.totalBrgyBudget} onChange={(v) => upd('totalBrgyBudget', v)} />
               </F>
-              <F label="Total GAD Budget (₱)">
+              <F label="Total GAD Budget (₱)" field="totalGadBudget">
                 <N value={d.totalGadBudget} onChange={(v) => upd('totalGadBudget', v)} />
               </F>
             </div>
@@ -734,11 +740,11 @@ export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
           <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
           <div className="grid grid-cols-2 gap-3">
-            <F label="Prepared by (Barangay GAD Focal)">
+            <F label="Prepared by (Barangay GAD Focal)" field="preparedBy">
               <Input value={d.preparedBy} onChange={(e) => upd('preparedBy', e.target.value)}
                 placeholder="Full name and position" className="text-[12px]" />
             </F>
-            <F label="Approved by (Punong Barangay)">
+            <F label="Approved by (Punong Barangay)" field="approvedBy">
               <Input value={d.approvedBy} onChange={(e) => upd('approvedBy', e.target.value)}
                 placeholder="Full name" className="text-[12px]" />
             </F>
@@ -946,24 +952,26 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit,
             </p>
             <div className="mt-2 flex items-center justify-center gap-2 text-[13px] font-semibold text-[#09090B]">
               <span>FY</span>
-              <Input type="number" value={d.fy} onChange={(e) => upd('fy', Number(e.target.value))}
-                className="h-7 w-24 text-center text-[12px]" />
+              <FlaggableField field="fy" label="Fiscal Year">
+                <Input type="number" value={d.fy} onChange={(e) => upd('fy', Number(e.target.value))}
+                  className="h-7 w-24 text-center text-[12px]" />
+              </FlaggableField>
             </div>
           </div>
 
           {/* Region / Province / City / Barangay  |  Budgets */}
           <div className="grid grid-cols-2 gap-x-10 gap-y-2.5">
             <div className="space-y-2.5">
-              <LockedField label="Region" value={d.region} />
-              <LockedField label="Province" value={d.province} />
-              <LockedField label="City" value={d.cityMunicipality} />
-              <BarangayField value={d.barangay} onChange={(v) => upd('barangay', v)} locked={!!user?.barangay} />
+              <FlaggableField field="region"><LockedField label="Region" value={d.region} /></FlaggableField>
+              <FlaggableField field="province"><LockedField label="Province" value={d.province} /></FlaggableField>
+              <FlaggableField field="cityMunicipality"><LockedField label="City" value={d.cityMunicipality} /></FlaggableField>
+              <FlaggableField field="barangay"><BarangayField value={d.barangay} onChange={(v) => upd('barangay', v)} locked={!!user?.barangay} /></FlaggableField>
             </div>
             <div className="space-y-2.5">
-              <F label="Total Barangay Budget (₱)">
+              <F label="Total Barangay Budget (₱)" field="totalBrgyBudget">
                 <N value={d.totalBrgyBudget} onChange={(v) => upd('totalBrgyBudget', v)} />
               </F>
-              <F label="Total GAD Budget (₱)">
+              <F label="Total GAD Budget (₱)" field="totalGadBudget">
                 <N value={d.totalGadBudget} onChange={(v) => upd('totalGadBudget', v)} />
               </F>
               <GadBudgetShare totalBudget={d.totalBrgyBudget} gadBudget={d.totalGadBudget} budgetLabel="Barangay" />
@@ -1030,15 +1038,15 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit,
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
           <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
           <div className="grid grid-cols-3 gap-3">
-            <F label="Prepared by (Barangay GAD Focal)">
+            <F label="Prepared by (Barangay GAD Focal)" field="preparedBy">
               <Input value={d.preparedBy} onChange={(e) => upd('preparedBy', e.target.value)}
                 placeholder="Full name" className="text-[12px]" />
             </F>
-            <F label="Approved by (Punong Barangay)">
+            <F label="Approved by (Punong Barangay)" field="approvedBy">
               <Input value={d.approvedBy} onChange={(e) => upd('approvedBy', e.target.value)}
                 placeholder="Full name" className="text-[12px]" />
             </F>
-            <F label="Date (DD/MM/YYYY)">
+            <F label="Date (DD/MM/YYYY)" field="date">
               <Input type="date" value={d.date} onChange={(e) => upd('date', e.target.value)}
                 className="text-[12px]" />
             </F>
@@ -1198,19 +1206,19 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
           <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Header Information</p>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
             <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-3">
-              <LockedField label="City" value={d.cityMunicipality} />
-              <F label="Office / Department">
+              <FlaggableField field="cityMunicipality"><LockedField label="City" value={d.cityMunicipality} /></FlaggableField>
+              <F label="Office / Department" field="officeName">
                 <Input value={d.officeName} onChange={(e) => upd('officeName', e.target.value)} placeholder="e.g. CDRRMO" className="text-[12px]" />
               </F>
-              <LockedField label="Province" value={d.province} />
-              <LockedField label="Region" value={d.region} />
-              <F label="Fiscal Year (FY)" required>
+              <FlaggableField field="province"><LockedField label="Province" value={d.province} /></FlaggableField>
+              <FlaggableField field="region"><LockedField label="Region" value={d.region} /></FlaggableField>
+              <F label="Fiscal Year (FY)" field="fy" required>
                 <Input type="number" value={d.fy} onChange={(e) => upd('fy', Number(e.target.value))} className="text-[12px]" />
               </F>
-              <F label="Total LGU Budget (₱)">
+              <F label="Total LGU Budget (₱)" field="totalLguBudget">
                 <N value={d.totalLguBudget} onChange={(v) => upd('totalLguBudget', v)} />
               </F>
-              <F label="Total GAD Budget (₱)">
+              <F label="Total GAD Budget (₱)" field="totalGadBudget">
                 <N value={d.totalGadBudget} onChange={(v) => upd('totalGadBudget', v)} />
               </F>
             </div>
@@ -1245,13 +1253,13 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
           <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
           <div className="grid grid-cols-3 gap-3">
-            <F label="Prepared by (GAD Focal / TWG Member)">
+            <F label="Prepared by (GAD Focal / TWG Member)" field="preparedBy">
               <Input value={d.preparedBy} onChange={(e) => upd('preparedBy', e.target.value)} placeholder="Full name" className="text-[12px]" />
             </F>
-            <F label="Approved by (Department Head)">
+            <F label="Approved by (Department Head)" field="approvedBy">
               <Input value={d.approvedBy} onChange={(e) => upd('approvedBy', e.target.value)} placeholder="Full name" className="text-[12px]" />
             </F>
-            <F label="Date">
+            <F label="Date" field="date">
               <Input type="date" value={d.date} onChange={(e) => upd('date', e.target.value)} className="text-[12px]" />
             </F>
           </div>
@@ -1267,25 +1275,25 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
 // widths proportional to the sheet's own column widths. Field (1) spans the
 // template's A:B, which is why it's the widest.
 const CITY_AR_COLS: SheetColumn[] = [
-  { label: 'Gender Issue or GAD Mandate',      num: 1,  width: 260, required: true, sticky: true },
-  { label: 'GAD Objective',                    num: 2,  width: 172 },
-  { label: 'Relevant LGU Program or Project',  num: 3,  width: 170 },
-  { label: 'GAD Activity',                     num: 4,  width: 184, required: true },
-  { label: 'Performance Indicator and Target', num: 5,  width: 200 },
-  { label: 'Actual Results',                   num: 6,  width: 200 },
-  { label: 'Approved GAD Budget',              num: 7,  width: 150, align: 'right' },
-  { label: 'Actual GAD Cost or Expenditure',   num: 8,  width: 150, align: 'right' },
-  { label: 'Variance or Remarks · with proof', num: 9,  width: 260 },
-  { label: 'Lead or Responsible Office',       num: 10, width: 180 },
+  { key: 'gadIssue', label: 'Gender Issue or GAD Mandate',      num: 1,  width: 260, required: true, sticky: true },
+  { key: 'gadObjective', label: 'GAD Objective',                    num: 2,  width: 172 },
+  { key: 'relevantProgram', label: 'Relevant LGU Program or Project',  num: 3,  width: 170 },
+  { key: 'activity', label: 'GAD Activity',                     num: 4,  width: 184, required: true },
+  { key: 'indicator', label: 'Performance Indicator and Target', num: 5,  width: 200 },
+  { key: 'actualResults', label: 'Actual Results',                   num: 6,  width: 200 },
+  { key: 'approvedBudget', label: 'Approved GAD Budget',              num: 7,  width: 150, align: 'right' },
+  { key: 'actualCost', label: 'Actual GAD Cost or Expenditure',   num: 8,  width: 150, align: 'right' },
+  { key: 'variance', label: 'Variance or Remarks · with proof', num: 9,  width: 260 },
+  { key: 'responsibleOffice', label: 'Lead or Responsible Office',       num: 10, width: 180 },
 ];
 
 // The attributed band restarts at (8) in the official form — kept as printed.
 const CITY_AR_ATTR_COLS: SheetColumn[] = [
-  { label: 'Title of LGU Program or Project',   num: 8,  width: 300, sticky: true },
-  { label: 'HGDG Design / Funding Facility / Generic Checklist Score', num: 9, width: 190, align: 'center' },
-  { label: 'Total Annual Program / Project Budget',  num: 10, width: 200, align: 'right' },
-  { label: 'GAD Attributed Program / Project Budget', num: 11, width: 200, align: 'right' },
-  { label: 'Lead or Responsible Office',        num: 12, width: 190 },
+  { key: 'projectTitle', label: 'Title of LGU Program or Project',   num: 8,  width: 300, sticky: true },
+  { key: 'hgdgScore', label: 'HGDG Design / Funding Facility / Generic Checklist Score', num: 9, width: 190, align: 'center' },
+  { key: 'totalBudget', label: 'Total Annual Program / Project Budget',  num: 10, width: 200, align: 'right' },
+  { key: 'gadAttributedBudget', label: 'GAD Attributed Program / Project Budget', num: 11, width: 200, align: 'right' },
+  { key: 'responsibleOffice', label: 'Lead or Responsible Office',        num: 12, width: 190 },
 ];
 
 export function CityARForm({ template, onBack, initialData, editId, isDraftEdit, isPendingEdit }: FormProps<CityARFormData>) {
@@ -1486,22 +1494,22 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit,
           </p>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
             <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-3">
-              <LockedField label="Region" value={d.region} />
-              <LockedField label="Province" value={d.province} />
-              <LockedField label="City" value={d.cityMunicipality} />
-              <F label="Name of Office">
+              <FlaggableField field="region"><LockedField label="Region" value={d.region} /></FlaggableField>
+              <FlaggableField field="province"><LockedField label="Province" value={d.province} /></FlaggableField>
+              <FlaggableField field="cityMunicipality"><LockedField label="City" value={d.cityMunicipality} /></FlaggableField>
+              <F label="Name of Office" field="officeName">
                 <Input value={d.officeName} onChange={(e) => upd('officeName', e.target.value)} placeholder="e.g. CDRRMO" className="text-[12px]" />
               </F>
-              <F label="Quarter">
+              <F label="Quarter" field="quarter">
                 <Input value={d.quarter} onChange={(e) => upd('quarter', e.target.value)} placeholder="e.g. 4th / Annual" className="text-[12px]" />
               </F>
-              <F label="Fiscal Year (FY)" required>
+              <F label="Fiscal Year (FY)" field="fy" required>
                 <Input type="number" value={d.fy} onChange={(e) => upd('fy', Number(e.target.value))} className="text-[12px]" />
               </F>
-              <F label="Total LGU Budget (₱)">
+              <F label="Total LGU Budget (₱)" field="totalLguBudget">
                 <N value={d.totalLguBudget} onChange={(v) => upd('totalLguBudget', v)} />
               </F>
-              <F label="Total GAD Budget (₱)">
+              <F label="Total GAD Budget (₱)" field="totalGadBudget">
                 <N value={d.totalGadBudget} onChange={(v) => upd('totalGadBudget', v)} />
               </F>
             </div>
@@ -1557,13 +1565,13 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit,
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
           <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <F label="Prepared by (Office — GAD TWG)">
+            <F label="Prepared by (Office — GAD TWG)" field="preparedBy">
               <Input value={d.preparedBy} onChange={(e) => upd('preparedBy', e.target.value)} placeholder="Full name" className="text-[12px]" />
             </F>
-            <F label="Approved by (Department Manager)">
+            <F label="Approved by (Department Manager)" field="approvedBy">
               <Input value={d.approvedBy} onChange={(e) => upd('approvedBy', e.target.value)} placeholder="Full name" className="text-[12px]" />
             </F>
-            <F label="Date">
+            <F label="Date" field="date">
               <Input type="date" value={d.date} onChange={(e) => upd('date', e.target.value)} className="text-[12px]" />
             </F>
           </div>

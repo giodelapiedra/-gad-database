@@ -1,5 +1,5 @@
 import type { CityARFormData, CityARRow } from '@/hooks/useTemplates';
-import { peso, HeaderInfo, SectionBanner, AttrRows, RowNumber } from './ViewerShared';
+import { peso, HeaderInfo, SectionBanner, AttrRows, RowNumber, ViewField, Signatories } from './ViewerShared';
 import { FlaggedSection, FlaggedRow } from '@/components/review/ReviewFlags';
 import { GadBudgetShare } from '@/components/forms/GadBudgetShare';
 import { EvidenceList } from '@/components/forms/EvidenceField';
@@ -14,19 +14,16 @@ function CityARDataRows({ rows, section }: { rows: CityARRow[]; section: string 
             <RowNumber n={i + 1} />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {[
-                { label: 'Gender Issue or GAD Mandate (1)',   value: row.gadIssue },
-                { label: 'GAD Objective (2)',                 value: row.gadObjective },
-                { label: 'Relevant LGU Program/Project (3)',  value: row.relevantProgram },
-                { label: 'GAD Activity (4)',                  value: row.activity },
-                { label: 'Performance Indicator (5)',         value: row.indicator },
-                { label: 'Actual Results (6)',                value: row.actualResults },
-                { label: 'Lead/Responsible Office (10)',      value: row.responsibleOffice },
-                { label: 'Variance / Remarks (9)',            value: row.variance },
-              ].map(({ label, value }) => (
-                <div key={label}>
-                  <p className="text-[10px] font-medium text-[#71717A]">{label}</p>
-                  <p className="mt-0.5 whitespace-pre-wrap text-[12px] text-[#09090B]">{value || '—'}</p>
-                </div>
+                { label: 'Gender Issue or GAD Mandate (1)',   value: row.gadIssue, field: 'gadIssue' },
+                { label: 'GAD Objective (2)',                 value: row.gadObjective, field: 'gadObjective' },
+                { label: 'Relevant LGU Program/Project (3)',  value: row.relevantProgram, field: 'relevantProgram' },
+                { label: 'GAD Activity (4)',                  value: row.activity, field: 'activity' },
+                { label: 'Performance Indicator (5)',         value: row.indicator, field: 'indicator' },
+                { label: 'Actual Results (6)',                value: row.actualResults, field: 'actualResults' },
+                { label: 'Lead/Responsible Office (10)',      value: row.responsibleOffice, field: 'responsibleOffice' },
+                { label: 'Variance / Remarks (9)',            value: row.variance, field: 'variance' },
+              ].map(({ label, value, field }) => (
+                <ViewField key={label} field={field} label={label} value={value} />
               ))}
               {!!row.evidence?.length && (
                 <div className="col-span-full">
@@ -34,12 +31,8 @@ function CityARDataRows({ rows, section }: { rows: CityARRow[]; section: string 
                   <div className="sm:max-w-md"><EvidenceList files={row.evidence} /></div>
                 </div>
               )}
-              <div>
-                <p className="text-[10px] font-medium text-[#71717A]">Approved Budget / Actual Cost</p>
-                <p className="mt-0.5 text-[12px] tabular-nums text-[#09090B]">
-                  ₱{peso(row.approvedBudget)} / ₱{peso(row.actualCost)}
-                </p>
-              </div>
+              <ViewField field="approvedBudget" label="Approved GAD Budget (7)" value={`₱${peso(row.approvedBudget)}`} />
+              <ViewField field="actualCost" label="Actual GAD Cost (8)" value={`₱${peso(row.actualCost)}`} />
             </div>
           </div>
         </FlaggedRow>
@@ -61,14 +54,14 @@ export function CityARView({ d }: { d: CityARFormData }) {
             GAD Accomplishment Report (City) — Annex E
           </p>
           <HeaderInfo items={[
-            { label: 'City', value: d.cityMunicipality },
-            { label: 'Office/Department', value: d.officeName },
-            { label: 'Quarter',           value: d.quarter },
-            { label: 'Province',          value: d.province },
-            { label: 'Region',            value: d.region },
-            { label: 'Fiscal Year (FY)',  value: d.fy },
-            { label: 'Total LGU Budget',  value: d.totalLguBudget ? `₱${peso(d.totalLguBudget)}` : '' },
-            { label: 'Total GAD Budget',  value: d.totalGadBudget ? `₱${peso(d.totalGadBudget)}` : '' },
+            { label: 'City', value: d.cityMunicipality, field: 'cityMunicipality' },
+            { label: 'Office/Department', value: d.officeName, field: 'officeName' },
+            { label: 'Quarter',           value: d.quarter, field: 'quarter' },
+            { label: 'Province',          value: d.province, field: 'province' },
+            { label: 'Region',            value: d.region, field: 'region' },
+            { label: 'Fiscal Year (FY)',  value: d.fy, field: 'fy' },
+            { label: 'Total LGU Budget',  value: d.totalLguBudget ? `₱${peso(d.totalLguBudget)}` : '', field: 'totalLguBudget' },
+            { label: 'Total GAD Budget',  value: d.totalGadBudget ? `₱${peso(d.totalGadBudget)}` : '', field: 'totalGadBudget' },
           ]} />
           <div className="mt-4 sm:max-w-xs">
             <GadBudgetShare totalBudget={d.totalLguBudget} gadBudget={d.totalGadBudget} budgetLabel="LGU" />
@@ -117,21 +110,11 @@ export function CityARView({ d }: { d: CityARFormData }) {
       </div>
 
       <FlaggedSection section="signatories">
-        <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-          <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {[
-              { label: 'Prepared by (GAD Focal / TWG Member)', value: d.preparedBy },
-              { label: 'Approved by (Department Head)',         value: d.approvedBy },
-              { label: 'Date',                                  value: d.date },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-md border border-[#EBEBEB] px-3 py-2">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-[#71717A]">{label}</p>
-                <p className="mt-0.5 text-[13px] text-[#09090B]">{value || '—'}</p>
-              </div>
-            ))}
-          </div>
-        </div>
+        <Signatories items={[
+          { label: 'Prepared by (GAD Focal / TWG Member)', value: d.preparedBy, field: 'preparedBy' },
+          { label: 'Approved by (Department Head)', value: d.approvedBy, field: 'approvedBy' },
+          { label: 'Date', value: d.date, field: 'date' },
+        ]} />
       </FlaggedSection>
     </div>
   );

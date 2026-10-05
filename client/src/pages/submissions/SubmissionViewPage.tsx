@@ -12,7 +12,8 @@ import { useCallback, useState } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useGetSubmission, generateFromSubmission, useResolveComment, type SubmissionComment } from '@/hooks/useSubmissions';
+import { useGetSubmission, generateFromSubmission, useResolveComment, useAddComment, type SubmissionComment } from '@/hooks/useSubmissions';
+import type { FlagTarget } from '@/hooks/useReviewFlags';
 import { ReviewFlagsProvider, CorrectionChecklist } from '@/components/review/ReviewFlags';
 import { useAuth } from '@/hooks/useAuth';
 import type {
@@ -51,6 +52,18 @@ export default function SubmissionViewPage() {
   const { data: sub, isLoading, isError } = useGetSubmission(id ?? null);
   const isAdmin = user?.role === 'ADMIN';
   const resolveComment = useResolveComment();
+  const addComment = useAddComment();
+
+  // Reviewers comment straight on a cell; the cell turns red for the encoder.
+  const addFlag = useCallback(async (t: FlagTarget, body: string) => {
+    try {
+      await addComment.mutateAsync({ id: id!, body, section: t.section, rowNumber: t.rowNumber, field: t.field });
+      toast.success('Cell flagged for correction.');
+    } catch (err) {
+      toast.error('Failed to flag the cell.');
+      throw err;
+    }
+  }, [addComment, id]);
 
   // Reviewers resolve a flag straight from the red note on the form.
   const resolveFlag = useCallback(async (c: SubmissionComment) => {
@@ -201,7 +214,7 @@ export default function SubmissionViewPage() {
         )}
 
         {/* Form data view — dispatch to the correct viewer; flagged parts show in red */}
-        <ReviewFlagsProvider comments={sub.comments ?? []} onResolve={isAdmin ? resolveFlag : undefined}>
+        <ReviewFlagsProvider comments={sub.comments ?? []} onResolve={isAdmin ? resolveFlag : undefined} onAddFlag={isAdmin ? addFlag : undefined}>
           <CorrectionChecklist />
           {sub.templateId === 'BARANGAY_AR'  && <BrgyARView  d={formData as unknown as BrgyARFormData}  />}
           {sub.templateId === 'BARANGAY_GPB' && <BrgyGPBView d={formData as unknown as BrgyGPBFormData} />}

@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAddComment, useResolveComment, type SubmissionComment } from '@/hooks/useSubmissions';
-import { REVIEW_SECTIONS, sectionHasRows, sectionLabel } from '@/lib/reviewSections';
+import { REVIEW_SECTIONS, sectionHasRows, sectionLabel, flagWhere } from '@/lib/reviewSections';
 import { fmt } from './shared';
 
 const GENERAL = '__general__';
@@ -24,7 +24,7 @@ const GENERAL = '__general__';
 /** Tag showing which part of the form a comment flags, and whether it is still open. */
 function FlagTag({ c }: { c: SubmissionComment }) {
   if (!c.section) return null;
-  const where = `${sectionLabel(c.section)}${c.rowNumber != null ? ` · Row ${c.rowNumber}` : ''}`;
+  const where = flagWhere(c);
   return c.resolvedAt ? (
     <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
       <CheckCircle2Icon className="size-3" /> {where} · resolved
@@ -143,6 +143,9 @@ export function CommentsThread({ submissionId, comments, canFlag }: {
             {rowAllowed && (
               <Input type="number" min={1} value={row} onChange={(e) => setRow(e.target.value)}
                 placeholder="Row # (optional)" className="h-8 w-36 text-[12px]" />
+            )}
+            {!flagged && (
+              <span className="text-[11px] text-[#A1A1AA]">Tip: hover any cell of the form above and click its comment icon to flag that exact cell.</span>
             )}
             {flagged && (
               <span className="inline-flex items-center gap-1 text-[11px] text-red-600">

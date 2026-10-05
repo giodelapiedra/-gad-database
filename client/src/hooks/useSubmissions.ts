@@ -14,6 +14,8 @@ export interface SubmissionComment {
   section: string | null;
   /** 1-based row within `section`, when the comment points at a specific row. */
   rowNumber: number | null;
+  /** Column (form-data key) within the section/row, for cell-level flags. */
+  field: string | null;
   resolvedAt: string | null;
   resolvedBy: { id: string; name: string } | null;
   createdAt: string;
@@ -200,13 +202,14 @@ export function useAddComment() {
   return useMutation({
     mutationFn: async (payload: {
       id: string; body: string; file?: File | null;
-      section?: string | null; rowNumber?: number | null;
+      section?: string | null; rowNumber?: number | null; field?: string | null;
     }) => {
       const fd = new FormData();
       fd.append('body', payload.body);
       if (payload.file) fd.append('attachment', payload.file);
       if (payload.section) fd.append('section', payload.section);
       if (payload.section && payload.rowNumber) fd.append('rowNumber', String(payload.rowNumber));
+      if (payload.section && payload.field) fd.append('field', payload.field);
       const res = await api.post(`/submissions/${payload.id}/comments`, fd);
       return res.data.data as SubmissionComment;
     },

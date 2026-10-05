@@ -255,6 +255,8 @@ model SubmissionComment {
   section        String?
   /// 1-based row within `section` the comment points at, when it is about a specific row.
   rowNumber      Int?
+  /// Column (form-data key, e.g. "indicator", "mooe", "preparedBy") the comment points at, for cell-level flags.
+  field          String?
   resolvedAt     DateTime?
   resolvedById   String?
   createdAt      DateTime @default(now())

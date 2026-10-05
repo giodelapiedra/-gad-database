@@ -1,5 +1,5 @@
 import type { CityGPBFormData, CityGPBRow } from '@/hooks/useTemplates';
-import { peso, HeaderInfo, SectionBanner, AttrRows, RowNumber } from './ViewerShared';
+import { peso, HeaderInfo, SectionBanner, AttrRows, RowNumber, ViewField, Signatories } from './ViewerShared';
 import { FlaggedSection, FlaggedRow } from '@/components/review/ReviewFlags';
 import { GadBudgetShare } from '@/components/forms/GadBudgetShare';
 
@@ -13,25 +13,19 @@ function CityGPBDataRows({ rows, section }: { rows: CityGPBRow[]; section: strin
             <RowNumber n={i + 1} />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {[
-                { label: 'Gender Issue or GAD Mandate (1)',   value: row.gadIssue },
-                { label: 'GAD Objective (2)',                 value: row.gadObjective },
-                { label: 'Relevant LGU Program/Project (3)',  value: row.relevantProgram },
-                { label: 'GAD Activity (4)',                  value: row.activity },
-                { label: 'Performance Indicator (5)',         value: row.indicator },
-                { label: 'Lead/Responsible Office (9)',       value: row.responsibleOffice },
-              ].map(({ label, value }) => (
-                <div key={label}>
-                  <p className="text-[10px] font-medium text-[#71717A]">{label}</p>
-                  <p className="mt-0.5 whitespace-pre-wrap text-[12px] text-[#09090B]">{value || '—'}</p>
-                </div>
+                { label: 'Gender Issue or GAD Mandate (1)',   value: row.gadIssue, field: 'gadIssue' },
+                { label: 'GAD Objective (2)',                 value: row.gadObjective, field: 'gadObjective' },
+                { label: 'Relevant LGU Program/Project (3)',  value: row.relevantProgram, field: 'relevantProgram' },
+                { label: 'GAD Activity (4)',                  value: row.activity, field: 'activity' },
+                { label: 'Performance Indicator (5)',         value: row.indicator, field: 'indicator' },
+                { label: 'Lead/Responsible Office (9)',       value: row.responsibleOffice, field: 'responsibleOffice' },
+              ].map(({ label, value, field }) => (
+                <ViewField key={label} field={field} label={label} value={value} />
               ))}
-              <div>
-                <p className="text-[10px] font-medium text-[#71717A]">Budget MOOE/PS/CO</p>
-                <p className="mt-0.5 text-[12px] tabular-nums text-[#09090B]">
-                  ₱{peso(row.mooe)} / ₱{peso(row.ps)} / ₱{peso(row.co)}
-                </p>
-                <p className="text-[11px] text-[#71717A]">Total: ₱{peso(row.mooe + row.ps + row.co)}</p>
-              </div>
+              <ViewField field="mooe" label="MOOE (6)" value={`₱${peso(row.mooe)}`} />
+              <ViewField field="ps" label="PS (7)" value={`₱${peso(row.ps)}`} />
+              <ViewField field="co" label="CO (8)" value={`₱${peso(row.co)}`} />
+              <ViewField label="Budget Total" value={`₱${peso(row.mooe + row.ps + row.co)}`} />
             </div>
           </div>
         </FlaggedRow>
@@ -59,13 +53,13 @@ export function CityGPBView({ d }: { d: CityGPBFormData }) {
             Annual GAD Plan and Budget (City) — Annex D
           </p>
           <HeaderInfo items={[
-            { label: 'City', value: d.cityMunicipality },
-            { label: 'Office/Department', value: d.officeName },
-            { label: 'Province',          value: d.province },
-            { label: 'Region',            value: d.region },
-            { label: 'Fiscal Year (FY)',  value: d.fy },
-            { label: 'Total LGU Budget',  value: d.totalLguBudget ? `₱${peso(d.totalLguBudget)}` : '' },
-            { label: 'Total GAD Budget',  value: d.totalGadBudget ? `₱${peso(d.totalGadBudget)}` : '' },
+            { label: 'City', value: d.cityMunicipality, field: 'cityMunicipality' },
+            { label: 'Office/Department', value: d.officeName, field: 'officeName' },
+            { label: 'Province',          value: d.province, field: 'province' },
+            { label: 'Region',            value: d.region, field: 'region' },
+            { label: 'Fiscal Year (FY)',  value: d.fy, field: 'fy' },
+            { label: 'Total LGU Budget',  value: d.totalLguBudget ? `₱${peso(d.totalLguBudget)}` : '', field: 'totalLguBudget' },
+            { label: 'Total GAD Budget',  value: d.totalGadBudget ? `₱${peso(d.totalGadBudget)}` : '', field: 'totalGadBudget' },
           ]} />
           <div className="mt-4 sm:max-w-xs">
             <GadBudgetShare totalBudget={d.totalLguBudget} gadBudget={d.totalGadBudget} budgetLabel="LGU" />
@@ -129,21 +123,11 @@ export function CityGPBView({ d }: { d: CityGPBFormData }) {
       </div>
 
       <FlaggedSection section="signatories">
-        <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
-          <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Signatories</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {[
-              { label: 'Prepared by (GAD Focal / TWG Member)', value: d.preparedBy },
-              { label: 'Approved by (Department Head)',         value: d.approvedBy },
-              { label: 'Date',                                  value: d.date },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-md border border-[#EBEBEB] px-3 py-2">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-[#71717A]">{label}</p>
-                <p className="mt-0.5 text-[13px] text-[#09090B]">{value || '—'}</p>
-              </div>
-            ))}
-          </div>
-        </div>
+        <Signatories items={[
+          { label: 'Prepared by (GAD Focal / TWG Member)', value: d.preparedBy, field: 'preparedBy' },
+          { label: 'Approved by (Department Head)', value: d.approvedBy, field: 'approvedBy' },
+          { label: 'Date', value: d.date, field: 'date' },
+        ]} />
       </FlaggedSection>
     </div>
   );
