@@ -39,12 +39,23 @@ export interface AutosaveControls {
   discard: () => void;
   /** Forget the local copy — call after a successful save/submit. */
   clear: () => void;
+  /** Hide the "restored" notice; the restored work itself stays. */
+  dismissRestored: () => void;
+}
+
+export interface AutosavedStateControls<T> extends AutosaveControls {
+  /**
+   * Apply a change the system made by itself (e.g. auto-copying the GPB into a
+   * new AR). On an untouched form it counts as the starting point, so opening
+   * the form doesn't leave "unsaved work" behind.
+   */
+  setQuietly: Dispatch<SetStateAction<T>>;
 }
 
 export function useAutosavedState<T>(
   { templateId, userId, editId, base }: { templateId: string; userId?: string; editId?: string; base?: unknown },
   makeInitial: () => T,
-): [T, Dispatch<SetStateAction<T>>, AutosaveControls] {
+): [T, Dispatch<SetStateAction<T>>, AutosavedStateControls<T>] {
   const key = `${PREFIX}${userId ?? 'anon'}:${editId ?? 'new'}:${templateId}`;
   const baseSig = hash(JSON.stringify(base ?? null));
 
@@ -59,11 +70,19 @@ export function useAutosavedState<T>(
   // Snapshot of the untouched form, so merely opening a form saves nothing.
   const pristine = useRef<string | null>(null);
   const cleared  = useRef(false);
+  const quiet    = useRef(false);
+  const lastJson = useRef<string | null>(null);
 
   useEffect(() => {
     if (cleared.current) return;
     const json = JSON.stringify(data);
     if (pristine.current === null && !firstRestoredAt) pristine.current = json;
+    // A system-made change on a form the user hasn't touched moves the baseline.
+    if (quiet.current) {
+      quiet.current = false;
+      if (lastJson.current === pristine.current) pristine.current = json;
+    }
+    lastJson.current = json;
     if (json === pristine.current) { remove(key); return; }
     try {
       const entry: Stored<T> = { data, base: baseSig, savedAt: new Date().toISOString() };
@@ -81,5 +100,12 @@ export function useAutosavedState<T>(
     setRestoredAt(null);
   }, [key, makeInitial]);
 
-  return [data, setData, { restoredAt, discard, clear }];
+  const dismissRestored = useCallback(() => setRestoredAt(null), []);
+
+  const setQuietly = useCallback<Dispatch<SetStateAction<T>>>((v) => {
+    quiet.current = true;
+    setData(v);
+  }, []);
+
+  return [data, setData, { restoredAt, discard, clear, dismissRestored, setQuietly }];
 }

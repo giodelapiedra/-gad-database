@@ -63,7 +63,7 @@ export function BrgyARView({ d }: { d: BrgyARFormData }) {
           </div>
           <HeaderInfo items={[
             { label: 'Barangay',          value: d.barangay },
-            { label: 'City/Municipality', value: d.cityMunicipality },
+            { label: 'City', value: d.cityMunicipality },
             { label: 'Province',          value: d.province },
             { label: 'Region',            value: d.region },
             { label: 'Total Brgy Budget', value: d.totalBrgyBudget ? `₱${peso(d.totalBrgyBudget)}` : '' },

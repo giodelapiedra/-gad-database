@@ -1,13 +1,30 @@
-import type { BrgyGPBFormData, BrgyGPBRow } from '@/hooks/useTemplates';
+import { gpbKind, type BrgyGPBFormData, type BrgyGPBRow } from '@/hooks/useTemplates';
 import { peso, HeaderInfo, SectionBanner, AttrRows, RowNumber } from './ViewerShared';
 import { GadBudgetShare } from '@/components/forms/GadBudgetShare';
 import { FlaggedSection, FlaggedRow } from '@/components/review/ReviewFlags';
 
-function BrgyGPBDataRows({ rows, section }: { rows: BrgyGPBRow[]; section: string }) {
+/** One section, split into its "1. Gender Issues" and "2. GAD Mandate" bands. */
+function BrgyGPBBands({ rows, section }: { rows: BrgyGPBRow[]; section: string }) {
+  const indexed = rows.map((row, i) => ({ row, i }));
+  return (
+    <>
+      {([['issue', '1. Gender Issues'], ['mandate', '2. GAD Mandate']] as const).map(([kind, label]) => (
+        <div key={kind}>
+          <div className={`border-y px-4 py-1.5 text-[11px] font-semibold ${kind === 'issue' ? 'border-[#E4E4E7] bg-[#FAFAFA] text-[#52525B]' : 'border-amber-100 bg-amber-50 text-amber-800'}`}>
+            {label}
+          </div>
+          <BrgyGPBDataRows rows={indexed.filter(({ row }) => gpbKind(row) === kind)} section={section} />
+        </div>
+      ))}
+    </>
+  );
+}
+
+function BrgyGPBDataRows({ rows, section }: { rows: { row: BrgyGPBRow; i: number }[]; section: string }) {
   if (!rows.length) return <div className="px-4 py-3 text-[12px] text-[#A1A1AA]">No entries</div>;
   return (
     <div className="space-y-2 p-3">
-      {rows.map((row, i) => (
+      {rows.map(({ row, i }) => (
         <FlaggedRow key={i} section={section} row={i + 1}>
           <div className="rounded-md border border-[#EBEBEB] bg-[#FAFAFA] p-3">
             <RowNumber n={i + 1} />
@@ -55,7 +72,7 @@ export function BrgyGPBView({ d }: { d: BrgyGPBFormData }) {
           </p>
           <HeaderInfo items={[
             { label: 'Barangay',          value: d.barangay },
-            { label: 'City/Municipality', value: d.cityMunicipality },
+            { label: 'City', value: d.cityMunicipality },
             { label: 'Province',          value: d.province },
             { label: 'Region',            value: d.region },
             { label: 'Calendar Year (CY)',value: d.cy },
@@ -75,7 +92,7 @@ export function BrgyGPBView({ d }: { d: BrgyGPBFormData }) {
         <FlaggedSection key={label} section={section}>
           <div className="overflow-hidden rounded-[10px] border border-[#D4D4D8] bg-white">
             <SectionBanner>{label}</SectionBanner>
-            <BrgyGPBDataRows rows={rows} section={section} />
+            <BrgyGPBBands rows={rows} section={section} />
             <div className="flex items-center justify-between border-t border-[#E4E4E7] bg-[#F4F4F5] px-4 py-2">
               <span className="text-[12px] font-bold text-[#09090B]">Sub-total</span>
               <span className="text-[12px] font-bold tabular-nums text-[#09090B]">₱{peso(total)}</span>

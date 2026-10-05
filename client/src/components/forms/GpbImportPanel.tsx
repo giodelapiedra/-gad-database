@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ClipboardCopyIcon, RefreshCwIcon, LockIcon, Loader2Icon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useGetSubmissions, type FormSubmission } from '@/hooks/useSubmissions';
+import { gpbHasEntries } from '@/lib/gpbToAr';
 
 const STATUS_LABEL: Record<string, string> = {
   APPROVED: 'Approved', PENDING: 'Pending review', RETURNED: 'Returned', DRAFT: 'Draft',
@@ -38,7 +39,8 @@ export function GpbImportPanel({
     const rank = (s: FormSubmission) =>
       (planYear(s) === year ? 0 : 10) + (s.status === 'APPROVED' ? 0 : s.status === 'DRAFT' ? 2 : 1);
     return (data?.submissions ?? [])
-      .filter((s) => s.templateId === gpbTemplateId)
+      // A plan with no entries has nothing to copy, so it isn't offered or auto-linked.
+      .filter((s) => s.templateId === gpbTemplateId && gpbHasEntries(s.templateId, s.formData))
       .sort((a, b) => rank(a) - rank(b));   // stable: newest first within a rank
   }, [data, gpbTemplateId, year]);
 
@@ -81,7 +83,7 @@ export function GpbImportPanel({
           </span>
         ) : plans.length === 0 ? (
           <span className="text-[12px] text-[#1E40AF]/80">
-            You haven’t submitted a GAD Plan and Budget yet — fill the rows in by hand.
+            No GAD Plan and Budget with entries to copy from yet — fill the rows in by hand.
           </span>
         ) : (
           <div className="flex shrink-0 items-center gap-2">

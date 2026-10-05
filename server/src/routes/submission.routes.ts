@@ -110,7 +110,7 @@ router.patch('/:id/comments/:commentId', resolveComment as RequestHandler);
 // Generate Excel from submission
 router.post('/:id/generate', generate as RequestHandler);
 
-// Permanent delete (own submissions for encoder; any for admin)
+// Permanent delete — own submissions for encoders; anything not yet approved
 router.delete('/:id', deleteSubmission as RequestHandler);
 
 export default router;

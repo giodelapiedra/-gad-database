@@ -56,10 +56,10 @@ export function CityGPBView({ d }: { d: CityGPBFormData }) {
       <FlaggedSection section="header">
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
           <p className="mb-4 text-center text-[15px] font-bold uppercase tracking-wide text-[#09090B]">
-            Annual GAD Plan and Budget (City/Municipality) — Annex D
+            Annual GAD Plan and Budget (City) — Annex D
           </p>
           <HeaderInfo items={[
-            { label: 'City/Municipality', value: d.cityMunicipality },
+            { label: 'City', value: d.cityMunicipality },
             { label: 'Office/Department', value: d.officeName },
             { label: 'Province',          value: d.province },
             { label: 'Region',            value: d.region },

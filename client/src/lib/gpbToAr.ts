@@ -1,4 +1,7 @@
 import {
+  gpbKind,
+  isBlankBrgyGPBRow,
+  isBlankCityGPBRow,
   blankBrgyARRow,
   blankCityARRow,
   type BrgyARFormData,
@@ -59,11 +62,12 @@ export function importBrgyGpb(ar: BrgyARFormData, gpb: BrgyGPBFormData, gpbId: s
     const out = new Map<BrgyARSection, BrgyARRow[]>(bands.map((s) => [s, []]));
 
     (gpb[gpbSec] ?? []).forEach((g, i) => {
+      if (isBlankBrgyGPBRow(g)) return;
       const ref = `${gpbSec}:${i}`;
       refs.add(ref);
-      // Keep the row in whichever band (Gender Issues / GAD Mandate) it was in.
-      const home = bands.find((s) => (ar[s] ?? []).some((r) => r.gpbRef === ref)) ?? bands[0];
-      const prev = (ar[home] ?? []).find((r) => r.gpbRef === ref);
+      // The plan decides the band: a GAD Mandate entry lands under "2. GAD Mandate".
+      const home = gpbKind(g) === 'mandate' ? bands[1] : bands[0];
+      const prev = bands.flatMap((s) => ar[s] ?? []).find((r) => r.gpbRef === ref);
       out.get(home)!.push({ ...(prev ?? blankBrgyARRow()), ...brgyPlanned(g), gpbRef: ref });
     });
 
@@ -85,7 +89,27 @@ export function importBrgyGpb(ar: BrgyARFormData, gpb: BrgyGPBFormData, gpbId: s
   return next;
 }
 
-// ─── City / Municipality ──────────────────────────────────────────────────
+/**
+ * Whether a GAD Plan and Budget has anything to copy. A plan whose rows are all
+ * blank is never offered — linking to it would only lock empty cells.
+ */
+export function gpbHasEntries(templateId: string, formData: unknown): boolean {
+  const d = (formData ?? {}) as Partial<BrgyGPBFormData & CityGPBFormData>;
+  const rows = [...(d.clientFocused ?? []), ...(d.organizationFocused ?? [])];
+  return templateId === 'BARANGAY_GPB'
+    ? rows.some((r) => !isBlankBrgyGPBRow(r as BrgyGPBRow))
+    : rows.some((r) => !isBlankCityGPBRow(r as CityGPBRow));
+}
+
+/**
+ * Planned cells stay locked only when the plan actually filled them. ARs that
+ * were linked to an empty plan earlier keep their gpbRef on blank rows; those
+ * must stay editable.
+ */
+export const plannedLocked = (r: { gpbRef?: string; gadIssue: string; indicator: string; approvedBudget: number } & ({ ppa: string } | { activity: string })) =>
+  !!r.gpbRef && !!(str(r.gadIssue).trim() || str('ppa' in r ? r.ppa : r.activity).trim() || str(r.indicator).trim() || r.approvedBudget);
+
+// ─── City ───────────────────────────────────────────────────────────────
 
 const isBlankCityAR = (r: CityARRow) =>
   blank(r.gadIssue) && blank(r.gadObjective) && blank(r.relevantProgram) && blank(r.activity)
@@ -107,11 +131,13 @@ export function importCityGpb(ar: CityARFormData, gpb: CityGPBFormData, gpbId: s
 
   for (const sec of GPB_SECTIONS) {
     const refs = new Set<string>();
-    const rows: CityARRow[] = (gpb[sec] ?? []).map((g, i) => {
+    const rows: CityARRow[] = [];
+    (gpb[sec] ?? []).forEach((g, i) => {
+      if (isBlankCityGPBRow(g)) return;
       const ref = `${sec}:${i}`;
       refs.add(ref);
       const prev = (ar[sec] ?? []).find((r) => r.gpbRef === ref);
-      return { ...(prev ?? blankCityARRow()), ...cityPlanned(g), gpbRef: ref };
+      rows.push({ ...(prev ?? blankCityARRow()), ...cityPlanned(g), gpbRef: ref });
     });
     for (const r of ar[sec] ?? []) {
       if (r.gpbRef && refs.has(r.gpbRef)) continue;

@@ -5,6 +5,7 @@ import { AuthRequest } from '../types';
 import { sendSuccess, sendError } from '../utils/response';
 import { gadShareError } from '../utils/gadBudget';
 import { generateCityAR } from '../utils/cityAR.excel';
+import { importTemplateWorkbook, TemplateImportError, type ImportTemplateId } from '../utils/templateImport';
 
 // ─── Template Definitions ──────────────────────────────────────────────────
 
@@ -31,20 +32,20 @@ export const TEMPLATE_TYPES = [
   },
   {
     id: 'CITY_GPB',
-    name: 'City/Municipality GAD Plan and Budget',
-    shortName: 'City/Mun GPB',
+    name: 'City GAD Plan and Budget',
+    shortName: 'City GPB',
     description: 'Annual Gender and Development (GAD) Plan and Budget — Annex D',
-    level: 'City/Municipality',
+    level: 'City',
     type: 'GPB',
     annex: 'ANNEX D',
     fileName: 'CITY GPB TEMPLATE.xlsx',
   },
   {
     id: 'CITY_AR',
-    name: 'City/Municipality GAD Accomplishment Report',
-    shortName: 'City/Mun AR',
+    name: 'City GAD Accomplishment Report',
+    shortName: 'City AR',
     description: 'Gender and Development (GAD) Accomplishment Report — Annex E',
-    level: 'City/Municipality',
+    level: 'City',
     type: 'AR',
     annex: 'ANNEX E',
     fileName: 'CITY AR TEMPLATE.xlsx',
@@ -67,6 +68,8 @@ const attributedRowSchema = z.object({
 // ─── Barangay GPB schema ───────────────────────────────────────────────────
 
 const brgyGPBRowSchema = z.object({
+  // Which band of its section the row sits in: "1. Gender Issues" or "2. GAD Mandate".
+  kind: z.enum(['issue', 'mandate']).default('issue'),
   gadIssue: z.string().default(''),
   activity: z.string().default(''),
   indicator: z.string().default(''),
@@ -138,7 +141,7 @@ const cityGPBRowSchema = z.object({
 const cityGPBFormSchema = z.object({
   region: z.string().default(''),
   province: z.string().default(''),
-  cityMunicipality: z.string().min(1, 'City/Municipality name is required'),
+  cityMunicipality: z.string().min(1, 'City name is required'),
   officeName: z.string().default(''),
   fy: z.number().int().min(2000).max(2100),
   totalLguBudget: z.number().min(0).default(0),
@@ -169,7 +172,7 @@ const cityARRowSchema = z.object({
 const cityARFormSchema = z.object({
   region: z.string().default(''),
   province: z.string().default(''),
-  cityMunicipality: z.string().min(1, 'City/Municipality name is required'),
+  cityMunicipality: z.string().min(1, 'City name is required'),
   officeName: z.string().default(''),
   quarter: z.string().default('Annual'),
   fy: z.number().int().min(2000).max(2100),
@@ -391,7 +394,7 @@ async function genBrgyGPB(d: z.infer<typeof brgyGPBFormSchema>): Promise<Buffer>
   ws.getCell(r, 6).border = { bottom: THIN };
   r++;
 
-  setCell(ws, r, 1, 'City/Municipality:', { bold: true, border: false });
+  setCell(ws, r, 1, 'City:', { bold: true, border: false });
   setCell(ws, r, 2, d.cityMunicipality, { border: false });
   r++;
 
@@ -439,18 +442,27 @@ async function genBrgyGPB(d: z.infer<typeof brgyGPBFormSchema>): Promise<Buffer>
   ws.getRow(r).height = 18;
   r++;
 
-  const cfRows = d.clientFocused.length > 0 ? d.clientFocused : [null];
-  for (const row of cfRows) {
-    setCell(ws, r, 1, row?.gadIssue ?? '', { wrapText: true });
-    setCell(ws, r, 2, row?.activity ?? '', { wrapText: true });
-    setCell(ws, r, 3, row?.indicator ?? '', { wrapText: true });
-    numCell(ws, r, 4, row?.mooe ?? 0);
-    numCell(ws, r, 5, row?.ps ?? 0);
-    numCell(ws, r, 6, row?.co ?? 0);
-    setCell(ws, r, 7, row?.responsibleOffice ?? '', { wrapText: true });
-    ws.getRow(r).height = 40;
-    r++;
-  }
+  // Each section is split into "1. Gender Issues" and "2. GAD Mandate", as on the AR.
+  const addGPBBands = (rows: z.infer<typeof brgyGPBRowSchema>[]) => {
+    for (const [kind, label] of [['issue', '1. Gender Issues'], ['mandate', '2. GAD Mandate']] as const) {
+      mergeSet(ws, r, 1, r, NC, label, { fill: CLR.OLIVE, fontColor: CLR.WHITE, bold: false, hAlign: 'left' });
+      ws.getRow(r).height = 16;
+      r++;
+      const band = rows.filter((x) => x.kind === kind);
+      for (const row of band.length > 0 ? band : [null]) {
+        setCell(ws, r, 1, row?.gadIssue ?? '', { wrapText: true });
+        setCell(ws, r, 2, row?.activity ?? '', { wrapText: true });
+        setCell(ws, r, 3, row?.indicator ?? '', { wrapText: true });
+        numCell(ws, r, 4, row?.mooe ?? 0);
+        numCell(ws, r, 5, row?.ps ?? 0);
+        numCell(ws, r, 6, row?.co ?? 0);
+        setCell(ws, r, 7, row?.responsibleOffice ?? '', { wrapText: true });
+        ws.getRow(r).height = 40;
+        r++;
+      }
+    }
+  };
+  addGPBBands(d.clientFocused);
 
   const cfSum = sumGPB(d.clientFocused);
   mergeSet(ws, r, 1, r, 3, 'Sub Total A', { fill: CLR.OLIVE, fontColor: CLR.WHITE, bold: true, hAlign: 'left' });
@@ -466,18 +478,7 @@ async function genBrgyGPB(d: z.infer<typeof brgyGPBFormSchema>): Promise<Buffer>
   ws.getRow(r).height = 18;
   r++;
 
-  const ofRows = d.organizationFocused.length > 0 ? d.organizationFocused : [null];
-  for (const row of ofRows) {
-    setCell(ws, r, 1, row?.gadIssue ?? '', { wrapText: true });
-    setCell(ws, r, 2, row?.activity ?? '', { wrapText: true });
-    setCell(ws, r, 3, row?.indicator ?? '', { wrapText: true });
-    numCell(ws, r, 4, row?.mooe ?? 0);
-    numCell(ws, r, 5, row?.ps ?? 0);
-    numCell(ws, r, 6, row?.co ?? 0);
-    setCell(ws, r, 7, row?.responsibleOffice ?? '', { wrapText: true });
-    ws.getRow(r).height = 40;
-    r++;
-  }
+  addGPBBands(d.organizationFocused);
 
   const ofSum = sumGPB(d.organizationFocused);
   mergeSet(ws, r, 1, r, 3, 'Sub Total B', { fill: CLR.OLIVE, fontColor: CLR.WHITE, bold: true, hAlign: 'left' });
@@ -618,7 +619,7 @@ async function genBrgyAR(d: z.infer<typeof brgyARFormSchema>): Promise<Buffer> {
   ws.getCell(r, 6).border = { bottom: THIN };
   r++;
 
-  setCell(ws, r, 1, 'City/Municipality:', { bold: true, border: false });
+  setCell(ws, r, 1, 'City:', { bold: true, border: false });
   setCell(ws, r, 2, d.cityMunicipality,   { border: false });
   r++;
 
@@ -832,7 +833,7 @@ async function genCityGPB(d: z.infer<typeof cityGPBFormSchema>): Promise<Buffer>
   (ws.getCell(r, 8) as ExcelJS.Cell).border = { bottom: THIN };
   r++;
 
-  setCell(ws, r, 1, 'City/ Municipality:', { bold: true, border: false });
+  setCell(ws, r, 1, 'City:', { bold: true, border: false });
   setCell(ws, r, 2, d.cityMunicipality,    { border: false });
   r++;
 
@@ -1079,6 +1080,30 @@ export async function generateTemplate(req: AuthRequest, res: Response): Promise
   } catch (err) {
     console.error('Generate template error:', err);
     sendError(res, 'Failed to generate template.', 500);
+  }
+}
+
+/**
+ * Read an uploaded, filled-in template workbook back into form data so the
+ * online form can be auto-filled. `type` (optional) forces the template; without
+ * it the layout is detected. `sheet` (optional) picks one sheet of a workbook
+ * that holds several offices.
+ */
+export async function importTemplate(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.file) { sendError(res, 'No file uploaded.'); return; }
+    const { type, sheet } = (req.body ?? {}) as { type?: string; sheet?: string };
+    if (type && !TEMPLATE_TYPES.some((t) => t.id === type)) { sendError(res, 'Template type not found.', 404); return; }
+
+    const result = importTemplateWorkbook(req.file.buffer, {
+      templateId: (type || undefined) as ImportTemplateId | undefined,
+      sheet: sheet || undefined,
+    });
+    sendSuccess(res, { ...result, fileName: req.file.originalname }, 'Workbook read successfully');
+  } catch (err) {
+    if (err instanceof TemplateImportError) { sendError(res, err.message); return; }
+    console.error('Import template error:', err);
+    sendError(res, 'Failed to read the workbook.', 500);
   }
 }
 

@@ -241,7 +241,7 @@ export async function generateCityAR(d: CityARData): Promise<Buffer> {
   }
   {
     const v = blankRow();
-    v[0] = undefined;                                    // "City/ Municipality:"
+    v[0] = 'City:';                                      // template reads "City/ Municipality:"
     v[2] = d.cityMunicipality;
     b.row(P.info3, v, [{ from: 1, to: 2 }]);
   }

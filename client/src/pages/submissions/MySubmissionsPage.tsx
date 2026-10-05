@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ClockIcon,
@@ -20,8 +20,17 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
   useGetSubmissions,
   useDeleteSubmission,
+  apiErrorMessage,
   generateFromSubmission,
   type FormSubmission,
   type SubmissionStatus,
@@ -133,6 +142,7 @@ export default function MySubmissionsPage() {
   const [page, setPage]           = useState(1);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [deleting, setDeleting]       = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<FormSubmission | null>(null);
   const [expanded, setExpanded]   = useState<Set<string>>(new Set());
   const navigate = useNavigate();
   const deleteMutation = useDeleteSubmission();
@@ -155,6 +165,11 @@ export default function MySubmissionsPage() {
   const counts      = data?.counts ?? { all: 0, draft: 0, pending: 0, approved: 0, returned: 0 };
   const total       = data?.total ?? 0;
   const totalPages  = data?.totalPages ?? 1;
+
+  // Deleting the last item on the last page would leave an empty page behind.
+  useEffect(() => {
+    if (!isLoading && page > 1 && page > totalPages) setPage(Math.max(1, totalPages));
+  }, [isLoading, page, totalPages]);
 
   function switchTab(tab: TabKey) {
     setActiveTab(tab);
@@ -181,13 +196,20 @@ export default function MySubmissionsPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    setDeleting(id);
+  async function handleDelete(s: FormSubmission) {
+    setConfirmDelete(null);
+    setDeleting(s.id);
     try {
-      await deleteMutation.mutateAsync(id);
-      toast.success('Draft deleted.');
-    } catch {
-      toast.error('Failed to delete draft.');
+      await deleteMutation.mutateAsync(s.id);
+      // Drop any unsaved edit of it kept by useAutosavedState (key: gad-form:<user>:<id>:<template>).
+      try {
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith('gad-form:') && k.includes(`:${s.id}:`))
+          .forEach((k) => localStorage.removeItem(k));
+      } catch { /* storage unavailable */ }
+      toast.success(s.status === 'DRAFT' ? 'Draft deleted.' : 'Submission deleted.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Failed to delete. Try again.'));
     } finally {
       setDeleting(null);
     }
@@ -323,16 +345,6 @@ export default function MySubmissionsPage() {
                         <FileEditIcon className="mr-1.5 size-3.5" />
                         Continue Editing
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-red-500 hover:bg-red-50 hover:text-red-600"
-                        disabled={deleting === s.id}
-                        onClick={() => handleDelete(s.id)}
-                      >
-                        <Trash2Icon className="mr-1.5 size-3.5" />
-                        {deleting === s.id ? 'Deleting…' : 'Delete'}
-                      </Button>
                     </>
                   )}
                   {s.status === 'PENDING' && (
@@ -353,6 +365,19 @@ export default function MySubmissionsPage() {
                     >
                       <PencilIcon className="mr-1.5 size-3.5" />
                       Edit & Resubmit
+                    </Button>
+                  )}
+                  {/* Anything not yet approved can be withdrawn; approved forms are the official record. */}
+                  {s.status !== 'APPROVED' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                      disabled={deleting === s.id}
+                      onClick={() => setConfirmDelete(s)}
+                    >
+                      <Trash2Icon className="mr-1.5 size-3.5" />
+                      {deleting === s.id ? 'Deleting…' : 'Delete'}
                     </Button>
                   )}
                 </div>
@@ -393,6 +418,7 @@ export default function MySubmissionsPage() {
                     <p className="mt-5 text-[12px] text-[#71717A]">
                       Your submission is waiting for the admin to review. You'll be notified once there's a decision.
                       Spotted a mistake? Click <strong>Edit</strong> — you can still correct it until it's reviewed, no need to submit a new one.
+                      Submitted the wrong form? <strong>Delete</strong> withdraws it from review.
                     </p>
                   )}
                 </div>
@@ -402,6 +428,27 @@ export default function MySubmissionsPage() {
           })}
         </div>
       )}
+
+      {/* Delete confirmation */}
+      <Dialog open={!!confirmDelete} onOpenChange={(o) => { if (!o) setConfirmDelete(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-[15px]">Delete this {confirmDelete?.status === 'DRAFT' ? 'draft' : 'submission'}?</DialogTitle>
+            <DialogDescription className="text-[13px]">
+              <strong>{confirmDelete?.title}</strong> will be permanently deleted
+              {confirmDelete?.status === 'PENDING' && ' and taken out of the admin’s review queue'}
+              {confirmDelete?.status === 'RETURNED' && ', together with the reviewer’s comments'}.
+              This can’t be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-2 gap-2">
+            <Button variant="outline" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+            <Button className="bg-red-600 hover:bg-red-700" onClick={() => confirmDelete && handleDelete(confirmDelete)}>
+              <Trash2Icon className="mr-2 size-4" /> Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Pagination */}
       <Pagination

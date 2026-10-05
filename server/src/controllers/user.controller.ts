@@ -15,10 +15,15 @@ const createUserSchema = z.object({
   role: z.enum(['ADMIN', 'ENCODER']).default('ENCODER'),
   departmentId: z.string().optional(),
   barangay: barangaySchema.nullable().optional(),
-}).refine((d) => d.role !== 'ENCODER' || !!(d.departmentId && d.departmentId.length > 0), {
-  message: 'Encoders must be assigned a department.',
-  path: ['departmentId'],
 });
+
+// Department (office) is optional for every role. It drives submission
+// attribution and the per-office status board, but an office account must be
+// creatable before its dashboard folder exists — it can be linked later.
+async function departmentExists(id: string): Promise<boolean> {
+  const dept = await prisma.department.findFirst({ where: { id, isActive: true }, select: { id: true } });
+  return !!dept;
+}
 
 const updateUserSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').optional(),
@@ -62,6 +67,11 @@ export async function createUser(req: AuthRequest, res: Response): Promise<void>
     }
 
     const { name, email, password, role, departmentId, barangay } = parsed.data;
+
+    if (departmentId && !(await departmentExists(departmentId))) {
+      sendError(res, 'Selected department no longer exists.');
+      return;
+    }
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
@@ -128,20 +138,18 @@ export async function updateUser(req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    // An encoder must always have a department. Check the effective role/dept
-    // (the incoming change, falling back to the user's current values).
     const existingUser = await prisma.user.findUnique({
       where: { id },
-      select: { role: true, departmentId: true },
+      select: { role: true },
     });
     if (!existingUser) { sendError(res, 'User not found.', 404); return; }
 
-    const effectiveRole = role ?? existingUser.role;
-    const effectiveDept = departmentId !== undefined ? (departmentId ?? null) : existingUser.departmentId;
-    if (effectiveRole === 'ENCODER' && !effectiveDept) {
-      sendError(res, 'Encoders must be assigned a department.');
+    if (departmentId && !(await departmentExists(departmentId))) {
+      sendError(res, 'Selected department no longer exists.');
       return;
     }
+
+    const effectiveRole = role ?? existingUser.role;
     // Barangay assignment only applies to encoders.
     if (effectiveRole === 'ADMIN') updateData.barangay = null;
 

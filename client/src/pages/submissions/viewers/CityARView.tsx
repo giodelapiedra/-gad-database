@@ -58,10 +58,10 @@ export function CityARView({ d }: { d: CityARFormData }) {
       <FlaggedSection section="header">
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
           <p className="mb-4 text-center text-[15px] font-bold uppercase tracking-wide text-[#09090B]">
-            GAD Accomplishment Report (City/Municipality) — Annex E
+            GAD Accomplishment Report (City) — Annex E
           </p>
           <HeaderInfo items={[
-            { label: 'City/Municipality', value: d.cityMunicipality },
+            { label: 'City', value: d.cityMunicipality },
             { label: 'Office/Department', value: d.officeName },
             { label: 'Quarter',           value: d.quarter },
             { label: 'Province',          value: d.province },

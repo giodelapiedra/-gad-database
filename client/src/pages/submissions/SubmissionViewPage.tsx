@@ -35,8 +35,8 @@ import { ReviewActions } from './ReviewActions';
 const TEMPLATE_LABELS: Record<string, string> = {
   BARANGAY_GPB: 'Barangay Annual GAD Plan and Budget',
   BARANGAY_AR:  'Barangay Annual GAD Accomplishment Report',
-  CITY_GPB:     'City/Municipality Annual GAD Plan and Budget (Annex D)',
-  CITY_AR:      'City/Municipality GAD Accomplishment Report (Annex E)',
+  CITY_GPB:     'City Annual GAD Plan and Budget (Annex D)',
+  CITY_AR:      'City GAD Accomplishment Report (Annex E)',
 };
 
 // ─── Page ─────────────────────────────────────────────────────────────────────

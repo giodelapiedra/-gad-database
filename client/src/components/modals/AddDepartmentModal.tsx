@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { useCreateDepartment } from '@/hooks/useDepartments';
 import { toastSuccess, toastError } from '@/lib/toast';
 import { cn } from '@/lib/utils';
+import type { Department } from '@/types';
 
 const COLOR_SWATCHES = [
   '#3B82F6',
@@ -45,7 +46,7 @@ type DepartmentForm = z.infer<typeof departmentSchema>;
 interface AddDepartmentModalProps {
   open: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (department: Department) => void;
 }
 
 export default function AddDepartmentModal({ open, onClose, onSuccess }: AddDepartmentModalProps) {
@@ -75,9 +76,9 @@ export default function AddDepartmentModal({ open, onClose, onSuccess }: AddDepa
 
   const onSubmit = async (data: DepartmentForm) => {
     try {
-      await createDepartment.mutateAsync(data);
+      const created = await createDepartment.mutateAsync(data);
       toastSuccess(`Department ${data.code} added successfully`);
-      onSuccess();
+      onSuccess(created);
       handleClose();
     } catch (err) {
       if (err instanceof AxiosError && err.response?.data?.message) {

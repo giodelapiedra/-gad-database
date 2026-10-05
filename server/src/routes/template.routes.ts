@@ -1,5 +1,6 @@
 import { Router, RequestHandler } from 'express';
-import { listTemplates, generateTemplate } from '../controllers/template.controller';
+import { listTemplates, generateTemplate, importTemplate } from '../controllers/template.controller';
+import { uploadSingle } from '../middleware/upload.middleware';
 import { authenticate } from '../middleware/auth.middleware';
 
 const router = Router();
@@ -12,5 +13,9 @@ router.get('/', listTemplates as RequestHandler);
 
 // POST /api/templates/:type/generate — generate filled Excel from form data
 router.post('/:type/generate', generateTemplate as RequestHandler);
+
+// POST /api/templates/import — read a filled-in template workbook back into form data
+// (multipart: file, optional type, optional sheet)
+router.post('/import', uploadSingle('file') as RequestHandler, importTemplate as RequestHandler);
 
 export default router;

@@ -5,6 +5,7 @@ import { AuthRequest } from '../types';
 import { sendSuccess, sendError } from '../utils/response';
 import { applyFixedLocation } from '../utils/location';
 import { gadShareError } from '../utils/gadBudget';
+import { noEntriesError } from '../utils/formEntries';
 import { isReviewSection, hasRows } from '../utils/reviewSections';
 import prisma from '../utils/db';
 import { buildExcelForType } from './template.controller';
@@ -73,8 +74,8 @@ export async function create(req: AuthRequest, res: Response): Promise<void> {
 
     // Drafts may be incomplete; only a real submission must meet the 5% GAD budget rule.
     if (!isDraft) {
-      const budgetErr = gadShareError(templateId, formData);
-      if (budgetErr) { sendError(res, budgetErr, 400); return; }
+      const formErr = noEntriesError(templateId, formData) ?? gadShareError(templateId, formData);
+      if (formErr) { sendError(res, formErr, 400); return; }
     }
 
     const title = deriveTitle(templateId, formData);
@@ -413,11 +414,18 @@ export async function deleteSubmission(req: AuthRequest, res: Response): Promise
       sendError(res, 'Access denied.', 403); return;
     }
 
-    if (submission.status !== 'RETURNED' && submission.status !== 'DRAFT') {
-      sendError(res, 'Only draft or returned submissions can be deleted.', 400); return;
+    // An encoder may withdraw a form until it is approved — including one still
+    // waiting for review. Approved forms are the official record and stay.
+    if (submission.status === 'APPROVED') {
+      sendError(res, 'Approved submissions are official records and can no longer be deleted.', 400); return;
     }
 
-    await prisma.formSubmission.delete({ where: { id } });
+    // Notifications only hold the id (no foreign key), so drop them too — otherwise
+    // the admin is left with a "new submission" alert that leads to a 404.
+    await prisma.$transaction([
+      prisma.notification.deleteMany({ where: { submissionId: id } }),
+      prisma.formSubmission.delete({ where: { id } }),
+    ]);
     sendSuccess(res, { id }, 'Submission deleted successfully.');
   } catch (err) {
     console.error('Delete submission error:', err);
@@ -491,8 +499,8 @@ export async function updateFormData(req: AuthRequest, res: Response): Promise<v
 
     // Sending a form (back) into review must meet the 5% GAD budget rule.
     if (!isAdmin && resubmit) {
-      const budgetErr = gadShareError(submission.templateId, formData);
-      if (budgetErr) { sendError(res, budgetErr, 400); return; }
+      const formErr = noEntriesError(submission.templateId, formData) ?? gadShareError(submission.templateId, formData);
+      if (formErr) { sendError(res, formErr, 400); return; }
     }
 
     if (!isAdmin) {

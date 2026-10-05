@@ -39,7 +39,12 @@ export const blankAttrRow = (): AttributedRow => ({
 
 // ─── Barangay GPB ─────────────────────────────────────────────────────────
 
+/** Band of a Barangay GPB section row: "1. Gender Issues" or "2. GAD Mandate". */
+export type GpbKind = 'issue' | 'mandate';
+
 export interface BrgyGPBRow {
+  /** Rows saved before the split have no kind — they count as gender issues. */
+  kind?: GpbKind;
   gadIssue: string;
   activity: string;
   indicator: string;
@@ -64,10 +69,17 @@ export interface BrgyGPBFormData {
   approvedBy: string;
 }
 
-export const blankBrgyGPBRow = (): BrgyGPBRow => ({
-  gadIssue: '', activity: '', indicator: '',
+export const blankBrgyGPBRow = (kind: GpbKind = 'issue'): BrgyGPBRow => ({
+  kind, gadIssue: '', activity: '', indicator: '',
   mooe: 0, ps: 0, co: 0, responsibleOffice: '',
 });
+
+export const gpbKind = (r: BrgyGPBRow): GpbKind => r.kind ?? 'issue';
+
+/** A row nothing was typed into — skipped by validation and when copying to the AR. */
+export const isBlankBrgyGPBRow = (r: BrgyGPBRow) =>
+  !r.gadIssue?.trim() && !r.activity?.trim() && !r.indicator?.trim()
+  && !r.mooe && !r.ps && !r.co && !r.responsibleOffice?.trim();
 
 // ─── Barangay AR ──────────────────────────────────────────────────────────
 
@@ -144,6 +156,11 @@ export const blankCityGPBRow = (): CityGPBRow => ({
   gadIssue: '', gadObjective: '', relevantProgram: '',
   activity: '', indicator: '', mooe: 0, ps: 0, co: 0, responsibleOffice: '',
 });
+
+/** A row nothing was typed into — never copied to the AR. */
+export const isBlankCityGPBRow = (r: CityGPBRow) =>
+  !r.gadIssue?.trim() && !r.gadObjective?.trim() && !r.relevantProgram?.trim() && !r.activity?.trim()
+  && !r.indicator?.trim() && !r.mooe && !r.ps && !r.co && !r.responsibleOffice?.trim();
 
 // ─── City AR ──────────────────────────────────────────────────────────────
 

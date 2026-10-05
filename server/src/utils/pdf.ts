@@ -155,15 +155,22 @@ function ddBrgyGPB(d: any): TDocumentDefinitions {
 
   const gpbRow = (r: any) => [txt(r?.gadIssue), txt(r?.activity), txt(r?.indicator), num(r?.mooe || 0), num(r?.ps || 0), num(r?.co || 0), txt(r?.responsibleOffice)];
 
+  // Gender Issues and GAD Mandate are separate bands within each section, as on the AR.
+  const addBands = (rows: any[] = []) => {
+    for (const [kind, label] of [['issue', '1. Gender Issues'], ['mandate', '2. GAD Mandate']]) {
+      body.push(sp(sect(label, NC, false), NC));
+      const band = rows.filter((x) => (x?.kind ?? 'issue') === kind);
+      (band.length ? band : [null]).forEach((r: any) => body.push(gpbRow(r)));
+    }
+  };
+
   body.push(sp(sect('CLIENT-FOCUSED', NC), NC));
-  const cf = (d.clientFocused?.length ? d.clientFocused : [null]);
-  cf.forEach((r: any) => body.push(gpbRow(r)));
+  addBands(d.clientFocused);
   const cfSum = sumGPB(d.clientFocused || []);
   body.push([...sp(sub('Sub Total A', 3), 3), num(cfSum.mooe, COL.OLIVE), num(cfSum.ps, COL.OLIVE), num(cfSum.co, COL.OLIVE), blank(COL.OLIVE)]);
 
   body.push(sp(sect('ORGANIZATION FOCUSED', NC), NC));
-  const of = (d.organizationFocused?.length ? d.organizationFocused : [null]);
-  of.forEach((r: any) => body.push(gpbRow(r)));
+  addBands(d.organizationFocused);
   const ofSum = sumGPB(d.organizationFocused || []);
   body.push([...sp(sub('Sub Total B', 3), 3), num(ofSum.mooe, COL.OLIVE), num(ofSum.ps, COL.OLIVE), num(ofSum.co, COL.OLIVE), blank(COL.OLIVE)]);
 
@@ -177,7 +184,7 @@ function ddBrgyGPB(d: any): TDocumentDefinitions {
   body.push([...sp(grand('GRAND TOTAL (A+B+C)', 3), 3), num(cfSum.mooe + ofSum.mooe, COL.YELLOW), num(cfSum.ps + ofSum.ps, COL.YELLOW), num(cfSum.co + ofSum.co, COL.YELLOW), blank(COL.YELLOW)]);
 
   const info = infoColumns(
-    [['Region:', d.region || ''], ['Province:', d.province || ''], ['City/Municipality:', d.cityMunicipality || ''], ['Barangay:', d.barangay || '']],
+    [['Region:', d.region || ''], ['Province:', d.province || ''], ['City:', d.cityMunicipality || ''], ['Barangay:', d.barangay || '']],
     [['Total Barangay Budget:', peso(d.totalBrgyBudget || 0)], ['Total GAD Budget:', peso(d.totalGadBudget || 0)]],
   );
   const sig = signatory(d.preparedBy || '', d.approvedBy || '', '', 'Barangay GAD Focal Point', 'Punong Barangay');
@@ -228,7 +235,7 @@ function ddBrgyAR(d: any): TDocumentDefinitions {
   body.push([...sp(grand('GRAND TOTAL (A+B+C)', 4), 4), num(cfS.approved + ofS.approved + aS.gad, COL.YELLOW), num(cfS.actual + ofS.actual, COL.YELLOW), blank(COL.YELLOW)]);
 
   const info = infoColumns(
-    [['Region:', d.region || ''], ['Province:', d.province || ''], ['City/Municipality:', d.cityMunicipality || ''], ['Barangay:', d.barangay || '']],
+    [['Region:', d.region || ''], ['Province:', d.province || ''], ['City:', d.cityMunicipality || ''], ['Barangay:', d.barangay || '']],
     [['Total Barangay Budget:', peso(d.totalBrgyBudget || 0)], ['Total GAD Budget:', peso(d.totalGadBudget || 0)]],
   );
   const sig = signatory(d.preparedBy || '', d.approvedBy || '', d.date || '', 'Barangay GAD Focal Point', 'Punong Barangay');
@@ -271,7 +278,7 @@ function ddCityGPB(d: any): TDocumentDefinitions {
   body.push([...sp(sub('Sub Total B', 5), 5), num(ofSum.mooe, COL.OLIVE), num(ofSum.ps, COL.OLIVE), num(ofSum.co, COL.OLIVE), blank(COL.OLIVE)]);
   body.push([...sp(grand('GRAND TOTAL (A+B)', 5), 5), num(cfSum.mooe + ofSum.mooe, COL.YELLOW), num(cfSum.ps + ofSum.ps, COL.YELLOW), num(cfSum.co + ofSum.co, COL.YELLOW), blank(COL.YELLOW)]);
 
-  const left: [string, string][] = [['Region:', d.region || ''], ['Province:', d.province || ''], ['City/ Municipality:', d.cityMunicipality || '']];
+  const left: [string, string][] = [['Region:', d.region || ''], ['Province:', d.province || ''], ['City:', d.cityMunicipality || '']];
   if (d.officeName) left.push(['Office/Department:', d.officeName]);
   const info = infoColumns(left, [['Total LGU Budget:', peso(d.totalLguBudget || 0)], ['Total GAD Budget:', peso(d.totalGadBudget || 0)]]);
   const sig = signatory(d.preparedBy || '', d.approvedBy || '', d.date || '', 'GAD Focal Person / TWG Member', 'Department Head');
@@ -317,7 +324,7 @@ function ddCityAR(d: any): TDocumentDefinitions {
 
   body.push([...sp(grand('GRAND TOTAL (A+B+C)', 6), 6), num(cfS.approved + ofS.approved + aS.gad, COL.YELLOW), num(cfS.actual + ofS.actual, COL.YELLOW), blank(COL.YELLOW), blank(COL.YELLOW)]);
 
-  const left: [string, string][] = [['Region:', d.region || ''], ['Province:', d.province || ''], ['City/ Municipality:', d.cityMunicipality || '']];
+  const left: [string, string][] = [['Region:', d.region || ''], ['Province:', d.province || ''], ['City:', d.cityMunicipality || '']];
   if (d.officeName) left.push(['Office/Department:', d.officeName]);
   const info = infoColumns(left, [['Total LGU Budget:', peso(d.totalLguBudget || 0)], ['Total GAD Budget:', peso(d.totalGadBudget || 0)]]);
   const sig = signatory(d.preparedBy || '', d.approvedBy || '', d.date || '', 'GAD Focal Person / TWG Member', 'Department Head');

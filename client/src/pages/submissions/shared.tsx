@@ -6,8 +6,8 @@ import type { SubmissionStatus } from '@/hooks/useSubmissions';
 export const TEMPLATE_LABELS: Record<string, string> = {
   BARANGAY_GPB: 'Barangay GPB',
   BARANGAY_AR:  'Barangay AR',
-  CITY_GPB:     'City/Mun GPB',
-  CITY_AR:      'City/Mun AR',
+  CITY_GPB:     'City GPB',
+  CITY_AR:      'City AR',
 };
 
 export function fmt(iso: string) {

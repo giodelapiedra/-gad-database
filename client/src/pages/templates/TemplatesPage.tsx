@@ -1,5 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  XIcon,
+  UploadIcon,
+  Loader2Icon,
   FileSpreadsheetIcon,
   FileTextIcon,
   DownloadIcon,
@@ -36,6 +39,8 @@ import {
   useGetTemplates,
   generateTemplateExcel,
   blankBrgyGPBRow,
+  gpbKind,
+  isBlankBrgyGPBRow,
   blankBrgyARRow,
   blankCityGPBRow,
   blankCityARRow,
@@ -46,6 +51,7 @@ import {
   type CityGPBFormData,
   type CityARFormData,
   type BrgyGPBRow,
+  type GpbKind,
   type BrgyARRow,
   type CityGPBRow,
   type CityARRow,
@@ -70,8 +76,10 @@ import {
 } from '@/components/forms/SheetGrid';
 import { GadBudgetShare } from '@/components/forms/GadBudgetShare';
 import { GpbImportPanel } from '@/components/forms/GpbImportPanel';
+import { ExcelImportPanel } from '@/components/forms/ExcelImportPanel';
+import { importTemplateExcel, importSummary, setPendingImport, mergeImported, type ExcelImportResult, type ImportTemplateId } from '@/lib/excelImport';
 import { EvidenceField } from '@/components/forms/EvidenceField';
-import { importBrgyGpb, importCityGpb } from '@/lib/gpbToAr';
+import { importBrgyGpb, importCityGpb, plannedLocked } from '@/lib/gpbToAr';
 import { validateGadShare } from '@/lib/gadBudget';
 import { LockedField, BarangayField } from '@/components/forms/LocationFields';
 import { withFixedLocation } from '@/lib/location';
@@ -184,6 +192,16 @@ function FormShell({
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const isEdit = !!editId;
 
+  // The "restored your unsaved work" notice is a heads-up, not a fixture: it
+  // clears itself after a few seconds (the restored work stays on the form).
+  const restoredAt = autosave?.restoredAt;
+  const dismissRestored = autosave?.dismissRestored;
+  useEffect(() => {
+    if (!restoredAt || !dismissRestored) return;
+    const t = setTimeout(dismissRestored, 8000);
+    return () => clearTimeout(t);
+  }, [restoredAt, dismissRestored]);
+
   // Primary action label/handler by mode.
   const subtitle = isDraftEdit
     ? 'Continue editing your draft, then save or submit for admin approval.'
@@ -295,6 +313,10 @@ function FormShell({
             onClick={() => setConfirmDiscard(true)}>
             Discard and start over
           </Button>
+          <button type="button" aria-label="Dismiss" onClick={autosave.dismissRestored}
+            className="rounded p-1 text-amber-700 hover:bg-amber-100">
+            <XIcon className="size-4" />
+          </button>
         </div>
       )}
 
@@ -501,12 +523,15 @@ export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit
     () => withFixedLocation(initialData ?? {
     region: '', province: '', cityMunicipality: '', barangay: '',
     cy, totalBrgyBudget: 0, totalGadBudget: 0,
-    clientFocused: [blankBrgyGPBRow()],
-    organizationFocused: [blankBrgyGPBRow()],
+    clientFocused: [blankBrgyGPBRow('issue'), blankBrgyGPBRow('mandate')],
+    organizationFocused: [blankBrgyGPBRow('issue'), blankBrgyGPBRow('mandate')],
     attributedPrograms: [blankAttrRow()],
     preparedBy: '', approvedBy: '',
   }, user?.barangay),
   );
+  const applyExcel = useCallback((r: ExcelImportResult) => {
+    setD((p) => withFixedLocation(mergeImported(p, r.templateId as ImportTemplateId, r.formData), user?.barangay));
+  }, [setD, user?.barangay]);
   const [busy, setBusy] = useState(false);
   const submitMutation = useSubmitForApproval();
   const updateMutation = useUpdateSubmission();
@@ -558,8 +583,13 @@ export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit
     }));
   }
 
-  function addRow(section: 'clientFocused' | 'organizationFocused') {
-    setD((prev) => ({ ...prev, [section]: [...prev[section], blankBrgyGPBRow()] }));
+  /** New rows go at the end of their band, keeping gender issues ahead of mandates. */
+  function addRow(section: 'clientFocused' | 'organizationFocused', kind: GpbKind) {
+    setD((prev) => {
+      const rows = prev[section];
+      const at = kind === 'mandate' ? rows.length : rows.filter((r) => gpbKind(r) === 'issue').length;
+      return { ...prev, [section]: [...rows.slice(0, at), blankBrgyGPBRow(kind), ...rows.slice(at)] };
+    });
   }
 
   function remRow(section: 'clientFocused' | 'organizationFocused', i: number) {
@@ -569,7 +599,9 @@ export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit
   function validate(): string | null {
     if (!d.barangay.trim()) return 'Barangay name is required.';
     if (!d.cy) return 'Calendar Year is required.';
-    const allRows = [...d.clientFocused, ...d.organizationFocused];
+    // A band left completely empty is fine; a row that was started must be complete.
+    const allRows = [...d.clientFocused, ...d.organizationFocused].filter((r) => !isBlankBrgyGPBRow(r));
+    if (!allRows.length) return 'Add at least one Gender Issue or GAD Mandate entry.';
     const hasBlankIssue = allRows.some((r) => !r.gadIssue.trim());
     if (hasBlankIssue) return 'All rows must have a Gender Issue or GAD Mandate filled in.';
     const hasBlankActivity = allRows.some((r) => !r.activity.trim());
@@ -613,14 +645,14 @@ export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit
     const rows = d[sec];
     const cols = BRGY_GPB_COLS;
     const t = sec === 'clientFocused' ? gpbA : gpbB;
-    return (
-      <FlaggedSection section={sec}>
-        <SheetBanner cols={cols}>{banner}</SheetBanner>
-        {rows.map((row, i) => (
+    // Row numbers (and review flags) follow the stored order: gender issues, then mandates.
+    const band = (kind: GpbKind) => rows.map((row, i) => ({ row, i })).filter(({ row }) => gpbKind(row) === kind);
+    const bandRows = (kind: GpbKind) => band(kind).map(({ row, i }) => (
           <FlaggedRow key={i} section={sec} row={i + 1}>
-            <SheetRow index={i} cols={cols} onRemove={rows.length > 1 ? () => remRow(sec, i) : undefined}>
+            <SheetRow index={i} cols={cols} onRemove={() => remRow(sec, i)}>
               <SheetCell col={cols[0]} cols={cols} index={0} value={row.gadIssue}
-                placeholder="e.g. RA 9710 Magna Carta of Women…" onChange={(v) => updRow(sec, i, 'gadIssue', v)} />
+                placeholder={gpbKind(row) === 'mandate' ? 'e.g. RA 9710 Magna Carta of Women…' : 'e.g. Low participation of women in livelihood…'}
+                onChange={(v) => updRow(sec, i, 'gadIssue', v)} />
               <SheetCell col={cols[1]} cols={cols} index={1} value={row.activity}
                 placeholder="e.g. Conduct Women’s Leadership Training" onChange={(v) => updRow(sec, i, 'activity', v)} />
               <SheetCell col={cols[2]} cols={cols} index={2} value={row.indicator}
@@ -632,8 +664,16 @@ export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit
                 placeholder="e.g. GAD Focal Point System" onChange={(v) => updRow(sec, i, 'responsibleOffice', v)} />
             </SheetRow>
           </FlaggedRow>
-        ))}
-        <SheetAddRow cols={cols} onClick={() => addRow(sec)} />
+        ));
+    return (
+      <FlaggedSection section={sec}>
+        <SheetBanner cols={cols}>{banner}</SheetBanner>
+        <SheetSubBanner cols={cols}>1. Gender Issues</SheetSubBanner>
+        {bandRows('issue')}
+        <SheetAddRow cols={cols} label="Add Gender Issue" onClick={() => addRow(sec, 'issue')} />
+        <SheetSubBanner cols={cols} tone="amber">2. GAD Mandate</SheetSubBanner>
+        {bandRows('mandate')}
+        <SheetAddRow cols={cols} label="Add GAD Mandate" onClick={() => addRow(sec, 'mandate')} />
         <SheetTotalRow label={subLabel} cols={cols} values={{ 3: money(t.mooe), 4: money(t.ps), 5: money(t.co) }} />
       </FlaggedSection>
     );
@@ -642,13 +682,15 @@ export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit
   return (
     <FormShell title="Barangay Annual GAD Plan and Budget (GPB)" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
       {/* Header */}
+      <ExcelImportPanel templateId={template.id} onApply={applyExcel} />
+
       <FlaggedSection section="header">
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
           <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Header Information</p>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
             <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-3">
               <BarangayField value={d.barangay} onChange={(v) => upd('barangay', v)} locked={!!user?.barangay} />
-              <LockedField label="City / Municipality" value={d.cityMunicipality} />
+              <LockedField label="City" value={d.cityMunicipality} />
               <LockedField label="Province" value={d.province} />
               <LockedField label="Region" value={d.region} />
               <F label="Calendar Year (CY)" required>
@@ -725,6 +767,11 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit,
     preparedBy: '', approvedBy: '', date: '',
   }, user?.barangay),
   );
+  const excelApplied = useRef(false);
+  const applyExcel = useCallback((r: ExcelImportResult) => {
+    excelApplied.current = true;
+    setD((p) => withFixedLocation(mergeImported(p, r.templateId as ImportTemplateId, r.formData), user?.barangay));
+  }, [setD, user?.barangay]);
   const [busy, setBusy] = useState(false);
   const submitMutation = useSubmitForApproval();
   const updateMutation = useUpdateSubmission();
@@ -779,12 +826,16 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit,
   function addRow(sec: ARSection) { setD((p) => ({ ...p, [sec]: [...p[sec], blankBrgyARRow()] })); }
   function remRow(sec: ARSection, i: number) { setD((p) => ({ ...p, [sec]: p[sec].filter((_, idx) => idx !== i) })); }
 
+  const { setQuietly } = autosave;
   const importFromGpb = useCallback((gpb: FormSubmission, auto: boolean) => {
-    setD((p) => importBrgyGpb(p, gpb.formData as BrgyGPBFormData, gpb.id));
+    // A workbook the encoder uploaded wins over the automatic copy of their plan.
+    if (auto && excelApplied.current) return;
+    // The automatic copy on a fresh AR isn't the encoder's work — don't keep it as "unsaved".
+    (auto ? setQuietly : setD)((p) => importBrgyGpb(p, gpb.formData as BrgyGPBFormData, gpb.id));
     toast.success(auto
       ? `Auto-filled from your plan "${gpb.title}".`
       : `Copied the planned activities from "${gpb.title}".`);
-  }, [setD]);
+  }, [setD, setQuietly]);
 
   async function generate() {
     const err = validate();
@@ -841,7 +892,7 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit,
     return (
       <>
         {rows.map((row, i) => {
-          const locked = !!row.gpbRef;
+          const locked = plannedLocked(row);
           return (
             <FlaggedRow key={i} section={AR_SECTION[sec]} row={off + i + 1}>
               {/* Any row may go: a band with nothing to report can be left empty. */}
@@ -884,6 +935,8 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit,
     <FormShell title="Barangay Annual GAD Accomplishment Report (AR)" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
 
       {/* ── Header Info ── */}
+      <ExcelImportPanel templateId={template.id} onApply={applyExcel} />
+
       <FlaggedSection section="header">
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
           {/* Title */}
@@ -903,7 +956,7 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit,
             <div className="space-y-2.5">
               <LockedField label="Region" value={d.region} />
               <LockedField label="Province" value={d.province} />
-              <LockedField label="City / Municipality" value={d.cityMunicipality} />
+              <LockedField label="City" value={d.cityMunicipality} />
               <BarangayField value={d.barangay} onChange={(v) => upd('barangay', v)} locked={!!user?.barangay} />
             </div>
             <div className="space-y-2.5">
@@ -1013,6 +1066,9 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
     preparedBy: '', approvedBy: '', date: '',
   }),
   );
+  const applyExcel = useCallback((r: ExcelImportResult) => {
+    setD((p) => withFixedLocation(mergeImported(p, r.templateId as ImportTemplateId, r.formData)));
+  }, [setD]);
   const [busy, setBusy] = useState(false);
   const submitMutation = useSubmitForApproval();
   const updateMutation = useUpdateSubmission();
@@ -1036,7 +1092,7 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
   }
 
   function validate(): string | null {
-    if (!d.cityMunicipality.trim()) return 'City/Municipality name is required.';
+    if (!d.cityMunicipality.trim()) return 'City name is required.';
     if (!d.fy) return 'Fiscal Year is required.';
     const allRows = [...d.clientFocused, ...d.organizationFocused];
     if (allRows.some((r) => !r.gadIssue.trim()))
@@ -1132,15 +1188,17 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
   }
 
   return (
-    <FormShell title="Annual GAD Plan and Budget (City/Municipality) — Annex D" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
+    <FormShell title="Annual GAD Plan and Budget (City) — Annex D" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
 
       {/* ── Header Info ── */}
+      <ExcelImportPanel templateId={template.id} onApply={applyExcel} />
+
       <FlaggedSection section="header">
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
           <p className="mb-3 text-[12px] font-semibold text-[#09090B]">Header Information</p>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
             <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-3">
-              <LockedField label="City / Municipality" value={d.cityMunicipality} />
+              <LockedField label="City" value={d.cityMunicipality} />
               <F label="Office / Department">
                 <Input value={d.officeName} onChange={(e) => upd('officeName', e.target.value)} placeholder="e.g. CDRRMO" className="text-[12px]" />
               </F>
@@ -1244,6 +1302,11 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit,
     preparedBy: '', approvedBy: '', date: '',
   }),
   );
+  const excelApplied = useRef(false);
+  const applyExcel = useCallback((r: ExcelImportResult) => {
+    excelApplied.current = true;
+    setD((p) => withFixedLocation(mergeImported(p, r.templateId as ImportTemplateId, r.formData)));
+  }, [setD]);
   const [busy, setBusy] = useState(false);
   const submitMutation = useSubmitForApproval();
   const updateMutation = useUpdateSubmission();
@@ -1267,7 +1330,7 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit,
   }
 
   function validate(): string | null {
-    if (!d.cityMunicipality.trim()) return 'City/Municipality name is required.';
+    if (!d.cityMunicipality.trim()) return 'City name is required.';
     if (!d.fy) return 'Fiscal Year is required.';
     const allRows = [...d.clientFocused, ...d.organizationFocused];
     if (allRows.some((r) => !r.gadIssue.trim()))
@@ -1300,12 +1363,15 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit,
   function remRow(sec: 'clientFocused' | 'organizationFocused', i: number) { setD((p) => ({ ...p, [sec]: p[sec].filter((_, idx) => idx !== i) })); }
 
 
+  const { setQuietly } = autosave;
   const importFromGpb = useCallback((gpb: FormSubmission, auto: boolean) => {
-    setD((p) => importCityGpb(p, gpb.formData as CityGPBFormData, gpb.id));
+    // A workbook the encoder uploaded wins over the automatic copy of their plan.
+    if (auto && excelApplied.current) return;
+    (auto ? setQuietly : setD)((p) => importCityGpb(p, gpb.formData as CityGPBFormData, gpb.id));
     toast.success(auto
       ? `Auto-filled from your plan "${gpb.title}".`
       : `Copied the planned activities from "${gpb.title}".`);
-  }, [setD]);
+  }, [setD, setQuietly]);
 
   async function generate() {
     const err = validate();
@@ -1357,7 +1423,7 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit,
           <SheetBanner cols={cols}>{banner}</SheetBanner>
           {rows.map((row, i) => {
             // Planned columns copied from the GPB stay read-only on the AR.
-            const locked = !!row.gpbRef;
+            const locked = plannedLocked(row);
             const text = (ci: number, key: keyof CityARRow, placeholder: string, planned = false) => (
               <SheetCell
                 key={key} col={cols[ci]} cols={cols} index={ci}
@@ -1406,8 +1472,10 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit,
   }
 
   return (
-    <FormShell title="GAD Accomplishment Report (City/Municipality) — Annex E" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
+    <FormShell title="GAD Accomplishment Report (City) — Annex E" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
       {/* ── Sheet heading, as printed above the table ── */}
+      <ExcelImportPanel templateId={template.id} onApply={applyExcel} />
+
       <FlaggedSection section="header">
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
           <p className="mb-4 text-center text-[13px] font-bold uppercase tracking-wide text-[#09090B]">
@@ -1420,7 +1488,7 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit,
             <div className="grid flex-1 grid-cols-2 gap-3 sm:grid-cols-3">
               <LockedField label="Region" value={d.region} />
               <LockedField label="Province" value={d.province} />
-              <LockedField label="City / Municipality" value={d.cityMunicipality} />
+              <LockedField label="City" value={d.cityMunicipality} />
               <F label="Name of Office">
                 <Input value={d.officeName} onChange={(e) => upd('officeName', e.target.value)} placeholder="e.g. CDRRMO" className="text-[12px]" />
               </F>
@@ -1506,6 +1574,54 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit,
 }
 
 
+// ─── Upload a filled workbook from the template list ──────────────────────
+
+/** Reads any filled GAD template, works out which one it is, and opens that form filled in. */
+function ExcelDetectUpload({ templates, onOpen }: { templates: TemplateDef[]; onOpen: (t: TemplateDef) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    try {
+      setBusy(true);
+      const r = await importTemplateExcel(f);
+      const t = templates.find((x) => x.id === r.templateId);
+      if (!t) { toast.error('That workbook doesn’t match any of the GAD templates.'); return; }
+      setPendingImport(r);
+      onOpen(t);
+      if (r.sheets.length > 1) {
+        toast.info(`Read sheet “${r.sheet}” (${importSummary(r)}). Upload again inside the form to pick another sheet.`);
+      }
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not read that file.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mb-6 flex flex-col gap-3 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3.5 sm:flex-row sm:items-center">
+      <UploadIcon className="hidden size-4 shrink-0 text-emerald-700 sm:block" />
+      <div className="min-w-0 flex-1 text-[12px] text-emerald-900">
+        <p className="font-semibold">Already have a filled-in template in Excel?</p>
+        <p className="mt-0.5 text-emerald-800/80">
+          Upload it — the system recognises which template it is and opens that form already filled in.
+        </p>
+      </div>
+      <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={pick} />
+      <Button size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700" disabled={busy}
+        onClick={() => inputRef.current?.click()}>
+        {busy
+          ? <><Loader2Icon className="mr-1.5 size-4 animate-spin" /> Reading…</>
+          : <><UploadIcon className="mr-1.5 size-4" /> Upload Excel</>}
+      </Button>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────
 
 export default function TemplatesPage() {
@@ -1557,6 +1673,8 @@ export default function TemplatesPage() {
           </p>
         </div>
       </div>
+
+      {templates && templates.length > 0 && <ExcelDetectUpload templates={templates} onOpen={setSelected} />}
 
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

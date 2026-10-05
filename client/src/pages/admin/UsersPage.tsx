@@ -55,6 +55,7 @@ import {
   type UserRecord,
 } from '@/hooks/useUsers';
 import { useGetDepartments } from '@/hooks/useDepartments';
+import AddDepartmentModal from '@/components/modals/AddDepartmentModal';
 import { TANAUAN_BARANGAYS } from '@/lib/location';
 import { useAuth } from '@/hooks/useAuth';
 import { formatDate } from '@/utils/formatters';
@@ -100,6 +101,7 @@ function UserModal({
     barangay: editUser?.barangay ?? '',
   });
   const [showPass, setShowPass] = useState(false);
+  const [addDeptOpen, setAddDeptOpen] = useState(false);
 
   // Keep form in sync when editUser changes
   const [lastEditId, setLastEditId] = useState<string | null>(null);
@@ -121,10 +123,6 @@ function UserModal({
     }
     if (!isEdit && !form.password) {
       toast.error('Password is required for new users.');
-      return;
-    }
-    if (form.role === 'ENCODER' && !form.departmentId) {
-      toast.error('Encoders must be assigned a department.');
       return;
     }
     try {
@@ -256,16 +254,17 @@ function UserModal({
           <div className="space-y-1.5">
             <Label>
               Department{' '}
-              {form.role === 'ENCODER'
-                ? <span className="text-[11px] font-normal text-red-500">(required)</span>
-                : <span className="text-[11px] font-normal text-[#A1A1AA]">(optional)</span>}
+              <span className="text-[11px] font-normal text-[#A1A1AA]">(optional)</span>
             </Label>
             {(() => {
               const selectedDept = (departments ?? []).find(d => d.id === form.departmentId);
               return (
                 <Select
                   value={form.departmentId || '__none__'}
-                  onValueChange={(v) => setForm((f: UserFormState): UserFormState => ({ ...f, departmentId: v === '__none__' ? '' : (v ?? '') }))}
+                  onValueChange={(v) => {
+                    if (v === '__add__') { setAddDeptOpen(true); return; }
+                    setForm((f: UserFormState): UserFormState => ({ ...f, departmentId: v === '__none__' ? '' : (v ?? '') }));
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue>
@@ -279,16 +278,12 @@ function UserModal({
                           <span className="text-[11px] text-[#A1A1AA]">({selectedDept.code})</span>
                         </div>
                       ) : (
-                        <span className="text-muted-foreground">
-                          {form.role === 'ENCODER' ? 'Select a department' : '— No department —'}
-                        </span>
+                        <span className="text-muted-foreground">— No department —</span>
                       )}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {form.role !== 'ENCODER' && (
-                      <SelectItem value="__none__">— No department —</SelectItem>
-                    )}
+                    <SelectItem value="__none__">— No department —</SelectItem>
                     {(departments ?? []).filter((d) => d.isActive).map((d) => (
                       <SelectItem key={d.id} value={d.id}>
                         <div className="flex items-center gap-2">
@@ -301,10 +296,21 @@ function UserModal({
                         </div>
                       </SelectItem>
                     ))}
+                    <SelectItem value="__add__">
+                      <div className="flex items-center gap-2 text-[#2563EB]">
+                        <PlusIcon className="size-3.5 shrink-0" />
+                        <span>Add new department</span>
+                      </div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               );
             })()}
+            {form.role === 'ENCODER' && !form.departmentId && (
+              <p className="text-[11px] text-[#A1A1AA]">
+                Can be linked later. Until then, this encoder's submissions won't appear under any office in the department status board.
+              </p>
+            )}
           </div>
 
           {/* Assigned Barangay — encoders only */}
@@ -348,6 +354,13 @@ function UserModal({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Create the office inline so an account never waits on its dashboard folder. */}
+      <AddDepartmentModal
+        open={addDeptOpen}
+        onClose={() => setAddDeptOpen(false)}
+        onSuccess={(dept) => setForm((f: UserFormState): UserFormState => ({ ...f, departmentId: dept.id }))}
+      />
     </Dialog>
   );
 }
