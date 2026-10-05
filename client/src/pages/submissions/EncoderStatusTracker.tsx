@@ -83,13 +83,13 @@ function Stepper({ steps }: { steps: Step[] }) {
             {i < steps.length - 1 && (
               <span aria-hidden className={cn(
                 'absolute left-1/2 top-4 h-0.5 w-full',
-                nextReached ? 'bg-[#18181B]' : 'bg-[#E4E4E7]',
+                nextReached ? 'bg-emerald-500' : 'bg-[#E4E4E7]',
               )} />
             )}
             <span className={cn(
               'relative z-10 flex size-8 items-center justify-center rounded-full border-2 text-[12px] font-semibold',
-              step.state === 'done' && 'border-[#18181B] bg-[#18181B] text-white',
-              step.state === 'current' && 'border-[#18181B] bg-white text-[#18181B] ring-4 ring-zinc-100',
+              step.state === 'done' && 'border-emerald-600 bg-emerald-600 text-white',
+              step.state === 'current' && 'border-emerald-600 bg-white text-emerald-700 ring-4 ring-emerald-100',
               step.state === 'alert' && 'border-red-500 bg-red-500 text-white ring-4 ring-red-100',
               step.state === 'todo' && 'border-[#E4E4E7] bg-white text-[#A1A1AA]',
             )}>
@@ -99,7 +99,7 @@ function Stepper({ steps }: { steps: Step[] }) {
             </span>
             <span className={cn(
               'mt-2 px-1 text-[12px] font-semibold leading-tight',
-              step.state === 'alert' ? 'text-red-700' : reached ? 'text-[#09090B]' : 'text-[#A1A1AA]',
+              step.state === 'alert' ? 'text-red-700' : step.state === 'current' ? 'text-emerald-700' : reached ? 'text-[#09090B]' : 'text-[#A1A1AA]',
             )}>
               {step.label}
             </span>
@@ -131,9 +131,18 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
 export function EncoderStatusTracker() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { data, isLoading } = useGetSubmissions({ limit: 20 });
-
-  const list = data?.submissions ?? [];
+  // Approved forms are done — the tracker only follows what's still in progress.
+  const pending  = useGetSubmissions({ status: 'PENDING',  limit: 20 });
+  const returned = useGetSubmissions({ status: 'RETURNED', limit: 20 });
+  const drafts   = useGetSubmissions({ status: 'DRAFT',    limit: 20 });
+  const isLoading = pending.isLoading || returned.isLoading || drafts.isLoading;
+  const data = pending.data;
+  const list = [
+    ...(pending.data?.submissions ?? []),
+    ...(returned.data?.submissions ?? []),
+    ...(drafts.data?.submissions ?? []),
+  ];
+  const approvedCount = data?.counts.approved ?? 0;
   const featured = pickFeatured(list);
   const others = featured ? list.filter((s) => s.id !== featured.id)
     .sort((a, b) => PRIORITY[stageOf(a)] - PRIORITY[stageOf(b)]).slice(0, 3) : [];
@@ -152,7 +161,9 @@ export function EncoderStatusTracker() {
           <p className="mt-0.5 text-[13px] text-zinc-300">
             {isLoading ? 'Checking your submissions…'
               : stage ? STAGE_COPY[stage]
-              : 'No submissions yet. Pick a template below to fill out your first GAD form.'}
+              : approvedCount > 0
+                ? `All your submissions are approved (${approvedCount}). Pick a template below to start a new form.`
+                : 'No submissions yet. Pick a template below to fill out your first GAD form.'}
           </p>
         </div>
         <Button size="sm" variant="secondary" className="shrink-0 self-start sm:self-auto"
