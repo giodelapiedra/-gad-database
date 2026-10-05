@@ -2,8 +2,8 @@ import * as React from 'react';
 import { PlusIcon, Trash2Icon, LockIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fieldAnchor } from '@/lib/reviewSections';
-import { useFieldFlags, useFlagScope } from '@/hooks/useReviewFlags';
-import { FieldNotes, CellCommentButton } from '@/components/review/ReviewFlags';
+import { useFieldFlags, useFlagScope, useCanEdit, useSectionEditable } from '@/hooks/useReviewFlags';
+import { FieldNotes, CellCommentButton, LockedControls } from '@/components/review/ReviewFlags';
 
 /**
  * Spreadsheet-style form grid.
@@ -296,6 +296,7 @@ export function SheetRow({
   onRemove?: () => void;
   children: React.ReactNode;
 }) {
+  const canRemove = useSectionEditable() && !!onRemove;
   return (
     <div
       className={cn('group flex border-b border-[#E4E4E7] last:border-b-0', BAND)}
@@ -313,7 +314,7 @@ export function SheetRow({
       {children}
 
       <div className={cn('flex items-start justify-center pt-2', TAIL)}>
-        {onRemove && (
+        {canRemove && (
           <button
             type="button"
             onClick={onRemove}
@@ -339,11 +340,12 @@ export function SheetSlot({
 }) {
   const flags = useFieldFlags(col.key);
   const anchor = useCellAnchor(col.key);
+  const editable = useCanEdit(col.key);
   return (
     <div id={anchor}
       className={cn('group/flag relative shrink-0 scroll-mt-24 border-r border-[#E4E4E7] p-1.5', flags.length && 'bg-red-50 ring-2 ring-inset ring-red-500')}
       style={{ width: col.width }}>
-      {children}
+      {editable ? children : <LockedControls>{children}</LockedControls>}
       <FieldNotes flags={flags} className="px-0.5 pt-1" />
       {col.key && <CellCommentButton field={col.key} label={col.label} />}
     </div>
@@ -383,7 +385,8 @@ export function SheetCell({
 }) {
   const align = col.align ?? (numeric ? 'right' : 'left');
   const shown = numeric ? (value === 0 || value === '' ? '' : String(value)) : String(value ?? '');
-  const noEdit = readOnly || locked;
+  const editable = useCanEdit(col.key);
+  const noEdit = readOnly || locked || !editable;
   const flags = useFieldFlags(col.key);
   const anchor = useCellAnchor(col.key);
   const flagged = flags.length > 0;
@@ -572,6 +575,7 @@ export function SheetAddRow({
   label?: string;
   cols: SheetColumn[];
 }) {
+  if (!useSectionEditable()) return null;
   return (
     <div
       className={cn('border-t border-[#E4E4E7] bg-white', BAND)}

@@ -53,6 +53,7 @@ export default function SubmissionViewPage() {
   const isAdmin = user?.role === 'ADMIN';
   const resolveComment = useResolveComment();
   const addComment = useAddComment();
+  const openFlags = (sub?.comments ?? []).filter((c) => c.section && !c.resolvedAt).length;
 
   // Reviewers comment straight on a cell; the cell turns red for the encoder.
   const addFlag = useCallback(async (t: FlagTarget, body: string) => {
@@ -160,10 +161,10 @@ export default function SubmissionViewPage() {
           </Button>
         )}
 
-        {sub.status === 'PENDING' && !isAdmin && (
-          <Button size="sm" variant="outline" onClick={() => navigate(`/my-submissions/${sub.id}/edit`)}>
+        {sub.status === 'PENDING' && !isAdmin && openFlags > 0 && (
+          <Button size="sm" onClick={() => navigate(`/my-submissions/${sub.id}/edit`)}>
             <PencilIcon className="mr-1.5 size-4" />
-            Edit
+            Fix flagged parts
           </Button>
         )}
 

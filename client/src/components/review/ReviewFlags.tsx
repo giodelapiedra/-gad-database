@@ -22,6 +22,7 @@ import {
   useRowFlagged,
   useFlagScope,
   useFieldFlags,
+  useCanEdit,
   type FlagTarget,
 } from '@/hooks/useReviewFlags';
 
@@ -29,10 +30,12 @@ import {
  * Supplies the submission's open (unresolved, section-tagged) reviewer flags to the form below.
  * With `onAddFlag`, every field gets a hover button that opens a comment box pinned to that cell.
  */
-export function ReviewFlagsProvider({ comments, onResolve, onAddFlag, children }: {
+export function ReviewFlagsProvider({ comments, onResolve, onAddFlag, restrictEdits, children }: {
   comments: SubmissionComment[];
   onResolve?: (comment: SubmissionComment) => void;
   onAddFlag?: (target: FlagTarget, body: string) => Promise<void>;
+  /** Encoder correcting a submitted form: everything not flagged is read-only. */
+  restrictEdits?: boolean;
   children: React.ReactNode;
 }) {
   const [target, setTarget] = useState<FlagTarget | null>(null);
@@ -41,7 +44,8 @@ export function ReviewFlagsProvider({ comments, onResolve, onAddFlag, children }
     flags: comments.filter((c) => c.section && !c.resolvedAt),
     onResolve,
     requestFlag: onAddFlag ? requestFlag : undefined,
-  }), [comments, onResolve, onAddFlag, requestFlag]);
+    restrictEdits,
+  }), [comments, onResolve, onAddFlag, requestFlag, restrictEdits]);
   return (
     <ReviewFlagsContext.Provider value={value}>
       {children}
@@ -255,6 +259,7 @@ export function FlaggableField({ field, label, value, className, children }: {
 }) {
   const scope = useFlagScope();
   const flags = useFieldFlags(field);
+  const editable = useCanEdit(field);
   if (!scope) return <div className={className}>{children}</div>;
   const flagged = flags.length > 0;
   return (
@@ -266,11 +271,26 @@ export function FlaggableField({ field, label, value, className, children }: {
         className,
       )}
     >
-      {children}
+      {editable ? children : <LockedControls>{children}</LockedControls>}
       {flagged && <FieldNotes flags={flags} className="px-0 pt-1" />}
       <CellCommentButton field={field} label={label} value={value != null ? String(value) : undefined} />
     </div>
   );
+}
+
+/** Disables every input inside — for parts the reviewer didn't flag while an encoder corrects a form. */
+export function LockedControls({ children }: { children: React.ReactNode }) {
+  return (
+    <fieldset disabled className="contents" title="Not flagged for correction — locked">
+      {children}
+    </fieldset>
+  );
+}
+
+/** Renders its children only while the whole form is editable (hidden when edits are limited to flags). */
+export function FullEditOnly({ children }: { children: React.ReactNode }) {
+  const { restrictEdits } = useReviewFlags();
+  return restrictEdits ? null : <>{children}</>;
 }
 
 function scrollToFlag(c: SubmissionComment) {

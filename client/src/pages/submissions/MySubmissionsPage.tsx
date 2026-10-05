@@ -347,14 +347,15 @@ export default function MySubmissionsPage() {
                       </Button>
                     </>
                   )}
-                  {s.status === 'PENDING' && (
+                  {/* Pending forms are locked until the reviewer flags something for correction. */}
+                  {s.status === 'PENDING' && (s.openFlags ?? 0) > 0 && (
                     <Button
                       size="sm"
-                      variant="outline"
+                      className="bg-[#18181B] hover:bg-[#18181B]/90"
                       onClick={() => navigate(`/my-submissions/${s.id}/edit`)}
                     >
                       <PencilIcon className="mr-1.5 size-3.5" />
-                      Edit
+                      Fix {s.openFlags} flagged {s.openFlags === 1 ? 'part' : 'parts'}
                     </Button>
                   )}
                   {s.status === 'RETURNED' && (
@@ -416,9 +417,11 @@ export default function MySubmissionsPage() {
                   )}
                   {s.status === 'PENDING' && (
                     <p className="mt-5 text-[12px] text-[#71717A]">
-                      Your submission is waiting for the admin to review. You'll be notified once there's a decision.
-                      Spotted a mistake? Click <strong>Edit</strong> — you can still correct it until it's reviewed, no need to submit a new one.
-                      Submitted the wrong form? <strong>Delete</strong> withdraws it from review.
+                      {(s.openFlags ?? 0) > 0
+                        ? <>The reviewer flagged parts of this form for correction. Click <strong>Fix flagged parts</strong> — only the parts marked red can be changed.</>
+                        : <>Your submission is waiting for the admin to review. You'll be notified once there's a decision.
+                          It can be edited only if the reviewer flags something for correction.</>}
+                      {' '}Submitted the wrong form? <strong>Delete</strong> withdraws it from review.
                     </p>
                   )}
                 </div>

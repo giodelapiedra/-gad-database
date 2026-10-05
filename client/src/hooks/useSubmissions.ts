@@ -42,6 +42,8 @@ export interface FormSubmission {
   };
   reviewer: { id: string; name: string } | null;
   comments?: SubmissionComment[];
+  /** Unresolved correction flags (list endpoint only). */
+  openFlags?: number;
 }
 
 export interface SubmissionCounts {

@@ -20,7 +20,10 @@ export default function DashboardLayout({
   defaultSidebarOpen = true,
   children,
 }: DashboardLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(defaultSidebarOpen);
+  // On phones the sidebar would squeeze the page, so it starts closed there.
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => defaultSidebarOpen && (typeof window === 'undefined' || window.innerWidth >= 768),
+  );
 
   return (
     <div className="relative flex h-screen bg-white">
@@ -44,7 +47,7 @@ export default function DashboardLayout({
           sidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen((v) => !v)}
         />
-        <main className="flex-1 overflow-y-auto bg-[#FAFAFA] p-6">
+        <main className="flex-1 overflow-y-auto bg-[#FAFAFA] p-4 sm:p-6">
           {children}
         </main>
       </div>

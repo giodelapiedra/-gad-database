@@ -83,7 +83,8 @@ import { importBrgyGpb, importCityGpb, plannedLocked } from '@/lib/gpbToAr';
 import { validateGadShare } from '@/lib/gadBudget';
 import { LockedField, BarangayField } from '@/components/forms/LocationFields';
 import { withFixedLocation } from '@/lib/location';
-import { FlaggedSection, FlaggedRow, FlaggableField } from '@/components/review/ReviewFlags';
+import { FlaggedSection, FlaggedRow, FlaggableField, FullEditOnly } from '@/components/review/ReviewFlags';
+import { EncoderStatusTracker } from '@/pages/submissions/EncoderStatusTracker';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -688,7 +689,7 @@ export function BrgyGPBForm({ template, onBack, initialData, editId, isDraftEdit
   return (
     <FormShell title="Barangay Annual GAD Plan and Budget (GPB)" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
       {/* Header */}
-      <ExcelImportPanel templateId={template.id} onApply={applyExcel} />
+      <FullEditOnly><ExcelImportPanel templateId={template.id} onApply={applyExcel} /></FullEditOnly>
 
       <FlaggedSection section="header">
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
@@ -941,7 +942,7 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit,
     <FormShell title="Barangay Annual GAD Accomplishment Report (AR)" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
 
       {/* ── Header Info ── */}
-      <ExcelImportPanel templateId={template.id} onApply={applyExcel} />
+      <FullEditOnly><ExcelImportPanel templateId={template.id} onApply={applyExcel} /></FullEditOnly>
 
       <FlaggedSection section="header">
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
@@ -981,14 +982,14 @@ export function BrgyARForm({ template, onBack, initialData, editId, isDraftEdit,
       </FlaggedSection>
 
       {isEncoder && (
-        <GpbImportPanel
+        <FullEditOnly><GpbImportPanel
           gpbTemplateId="BARANGAY_GPB"
           sourceGpbId={d.sourceGpbId}
           year={d.fy}
           autoImport={!editId && !initialData}
           lockedCols="(1), (2), (3) and (5)"
           onImport={importFromGpb}
-        />
+        /></FullEditOnly>
       )}
 
       <div>
@@ -1199,7 +1200,7 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
     <FormShell title="Annual GAD Plan and Budget (City) — Annex D" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
 
       {/* ── Header Info ── */}
-      <ExcelImportPanel templateId={template.id} onApply={applyExcel} />
+      <FullEditOnly><ExcelImportPanel templateId={template.id} onApply={applyExcel} /></FullEditOnly>
 
       <FlaggedSection section="header">
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
@@ -1482,7 +1483,7 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit,
   return (
     <FormShell title="GAD Accomplishment Report (City) — Annex E" template={template} onBack={onBack} onGenerate={generate} onSubmitApproval={submitForApproval} isEncoder={isEncoder} submitting={busy} editId={editId} onSaveEdit={saveEdit} onSaveDraft={isEncoder && (!editId || isDraftEdit) ? saveDraft : undefined} isDraftEdit={isDraftEdit} isPendingEdit={isPendingEdit} onValidate={isEncoder ? validate : undefined} autosave={autosave}>
       {/* ── Sheet heading, as printed above the table ── */}
-      <ExcelImportPanel templateId={template.id} onApply={applyExcel} />
+      <FullEditOnly><ExcelImportPanel templateId={template.id} onApply={applyExcel} /></FullEditOnly>
 
       <FlaggedSection section="header">
         <div className="rounded-[10px] border border-[#EBEBEB] bg-white p-5">
@@ -1521,14 +1522,14 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit,
       </FlaggedSection>
 
       {isEncoder && (
-        <GpbImportPanel
+        <FullEditOnly><GpbImportPanel
           gpbTemplateId="CITY_GPB"
           sourceGpbId={d.sourceGpbId}
           year={d.fy}
           autoImport={!editId && !initialData}
           lockedCols="(1)–(5) and (10)"
           onImport={importFromGpb}
-        />
+        /></FullEditOnly>
       )}
 
       {/* ── The table itself, one horizontally-scrolling sheet ── */}
@@ -1634,6 +1635,8 @@ function ExcelDetectUpload({ templates, onOpen }: { templates: TemplateDef[]; on
 
 export default function TemplatesPage() {
   const { data: templates, isLoading } = useGetTemplates();
+  const { user } = useAuth();
+  const isEncoderUser = user?.role === 'ENCODER';
   // The open form lives in the URL (?form=BARANGAY_AR) so a refresh — or the
   // browser's Back button — lands on the same form instead of the template list.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1664,6 +1667,8 @@ export default function TemplatesPage() {
 
   return (
     <DashboardLayout title="GAD Templates" breadcrumb="Tools / GAD Templates">
+      {isEncoderUser && <EncoderStatusTracker />}
+
       <div className="mb-6">
         <p className="text-[13px] text-[#71717A] max-w-2xl">
           Select a template below to fill out the official DILG GAD form online.

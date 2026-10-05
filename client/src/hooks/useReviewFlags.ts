@@ -24,6 +24,11 @@ export interface ReviewFlagsValue {
   onResolve?: (comment: SubmissionComment) => void;
   /** Present when the viewer may comment straight on a cell (reviewers on the view page). */
   requestFlag?: (target: FlagTarget) => void;
+  /**
+   * Encoder correcting a submitted form: only flagged parts are editable.
+   * Must match server/src/utils/correctionScope.ts.
+   */
+  restrictEdits?: boolean;
 }
 
 export const ReviewFlagsContext = createContext<ReviewFlagsValue>({ flags: [] });
@@ -64,4 +69,33 @@ export function useFieldFlags(field: string | undefined): SubmissionComment[] {
   if (!field || !scope) return [];
   const row = scope.row ?? null;
   return flags.filter((c) => c.section === scope.section && c.field === field && (c.rowNumber ?? null) === row);
+}
+
+/**
+ * Whether a flag opens the given spot: a section flag (no row, no column) opens the
+ * whole section, a row flag the whole row, a cell flag that one cell.
+ */
+function opens(c: SubmissionComment, section: string, row: number | null, field: string | null): boolean {
+  if (c.section !== section) return false;
+  if (c.rowNumber == null && !c.field) return true;
+  if (row != null && c.rowNumber === row && !c.field) return true;
+  return field != null && (c.rowNumber ?? null) === row && c.field === field;
+}
+
+/** Whether the field at the current scope may be edited (always, unless edits are restricted to flags). */
+export function useCanEdit(field: string | undefined): boolean {
+  const { flags, restrictEdits } = useReviewFlags();
+  const scope = useFlagScope();
+  if (!restrictEdits) return true;
+  if (!scope) return false;
+  return flags.some((c) => opens(c, scope.section, scope.row ?? null, field ?? null));
+}
+
+/** Whether rows may be added to / removed from the current section. */
+export function useSectionEditable(): boolean {
+  const { flags, restrictEdits } = useReviewFlags();
+  const scope = useFlagScope();
+  if (!restrictEdits) return true;
+  if (!scope) return false;
+  return flags.some((c) => opens(c, scope.section, null, null));
 }

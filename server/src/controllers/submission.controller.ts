@@ -7,6 +7,7 @@ import { applyFixedLocation } from '../utils/location';
 import { gadShareError } from '../utils/gadBudget';
 import { noEntriesError } from '../utils/formEntries';
 import { isReviewSection, hasRows, isFieldKey } from '../utils/reviewSections';
+import { disallowedChange } from '../utils/correctionScope';
 import prisma from '../utils/db';
 import { buildExcelForType } from './template.controller';
 import { buildPdfForType } from '../utils/pdf';
@@ -170,6 +171,7 @@ export async function list(req: AuthRequest, res: Response): Promise<void> {
               },
             },
             reviewer: { select: { id: true, name: true } },
+            _count: { select: { comments: { where: { section: { not: null }, resolvedAt: null } } } },
           },
         }),
         prisma.formSubmission.count({ where: buildWhere(statusFilter) }),
@@ -184,7 +186,8 @@ export async function list(req: AuthRequest, res: Response): Promise<void> {
     sendSuccess(
       res,
       {
-        submissions,
+        // Open correction flags per submission — encoders may edit only flagged forms.
+        submissions: submissions.map(({ _count, ...sub }) => ({ ...sub, openFlags: _count.comments })),
         total,
         page,
         limit,
@@ -505,10 +508,26 @@ export async function updateFormData(req: AuthRequest, res: Response): Promise<v
 
     if (!isAdmin) {
       if (submission.submittedBy !== req.user!.id) { sendError(res, 'Access denied.', 403); return; }
-      // Pending forms stay editable until the admin decides, so encoders fix
-      // mistakes in place instead of filing a second submission.
       if (submission.status === 'APPROVED') {
         sendError(res, 'An approved submission can no longer be edited.', 400); return;
+      }
+      // Once submitted, only what the reviewer flagged for correction may change.
+      // A pending form with no flags is locked; a returned form with no flags
+      // (sent back with general remarks only) stays fully editable.
+      if (submission.status !== 'DRAFT') {
+        const openFlags = await prisma.submissionComment.findMany({
+          where:  { submissionId: id, section: { not: null }, resolvedAt: null },
+          select: { section: true, rowNumber: true, field: true },
+        });
+        if (submission.status === 'PENDING' && openFlags.length === 0) {
+          sendError(res, 'This submission is waiting for review. You can edit it once the reviewer flags something for correction.', 403); return;
+        }
+        if (openFlags.length > 0) {
+          const bad = disallowedChange(submission.formData as Record<string, unknown>, formData, openFlags);
+          if (bad) {
+            sendError(res, `Only the parts flagged for correction can be changed (${bad} isn't flagged).`, 403); return;
+          }
+        }
       }
     }
 
