@@ -12,6 +12,7 @@ import {
   Loader2Icon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import TourLauncher from '@/components/tour/TourLauncher';
 import { useAuth } from '@/hooks/useAuth';
 import {
   useGetNotifications,
@@ -126,7 +127,7 @@ function NotificationBell() {
   }
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative" data-tour="notif-bell">
       {/* Bell button */}
       <button
         onClick={() => setOpen((v) => !v)}
@@ -265,6 +266,8 @@ export default function Topbar({
             className="h-8 w-[180px] rounded-md bg-[#F4F4F5] pl-3 pr-3 text-[13px] text-[#09090B] outline-none placeholder:text-[#A1A1AA] focus:ring-1 focus:ring-[#D4D4D8]"
           />
         </div>
+
+        <TourLauncher />
 
         <NotificationBell />
 

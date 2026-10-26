@@ -1083,6 +1083,91 @@ export async function generateTemplate(req: AuthRequest, res: Response): Promise
   }
 }
 
+// ─── Blank template download ──────────────────────────────────────────────
+// A blank workbook in the exact layout the importer expects, so the round-trip
+// works: download blank → fill in Excel offline → upload → the online form is
+// auto-filled. It reuses the same generators as the filled export (one source
+// of truth for the layout) but skips the submission-only budget checks, since a
+// blank intentionally has no figures yet. A few empty rows are seeded per
+// section so there is something to type into.
+
+const blankRows = <T,>(schema: z.ZodType<T>, n: number): T[] =>
+  Array.from({ length: n }, () => schema.parse({}));
+
+function blankFormData(type: TemplateId) {
+  const year = new Date().getFullYear();
+  if (type === 'BARANGAY_GPB') {
+    return {
+      ...brgyGPBFormSchema.parse({ barangay: ' ', cy: year }),
+      barangay: '',
+      clientFocused: blankRows(brgyGPBRowSchema, 3),
+      organizationFocused: blankRows(brgyGPBRowSchema, 3),
+      attributedPrograms: blankRows(attributedRowSchema, 2),
+    };
+  }
+  if (type === 'BARANGAY_AR') {
+    return {
+      ...brgyARFormSchema.parse({ barangay: ' ', fy: year }),
+      barangay: '',
+      clientFocusedGenderIssues: blankRows(brgyARRowSchema, 2),
+      clientFocusedGadMandate: blankRows(brgyARRowSchema, 2),
+      organizationGenderIssues: blankRows(brgyARRowSchema, 2),
+      organizationGadMandate: blankRows(brgyARRowSchema, 2),
+      attributedPrograms: blankRows(attributedRowSchema, 2),
+    };
+  }
+  if (type === 'CITY_GPB') {
+    return {
+      ...cityGPBFormSchema.parse({ cityMunicipality: ' ', fy: year }),
+      cityMunicipality: '',
+      clientFocused: blankRows(cityGPBRowSchema, 3),
+      organizationFocused: blankRows(cityGPBRowSchema, 3),
+      attributedPrograms: blankRows(attributedRowSchema, 2),
+    };
+  }
+  return {
+    ...cityARFormSchema.parse({ cityMunicipality: ' ', fy: year }),
+    cityMunicipality: '',
+    clientFocused: blankRows(cityARRowSchema, 3),
+    organizationFocused: blankRows(cityARRowSchema, 3),
+    attributedPrograms: blankRows(attributedRowSchema, 2),
+  };
+}
+
+export async function blankTemplate(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const { type } = req.params as { type: TemplateId };
+    const def = TEMPLATE_TYPES.find((t) => t.id === type);
+    if (!def) { sendError(res, 'Template type not found.', 404); return; }
+
+    const year = new Date().getFullYear();
+    let buffer: Buffer;
+    let fileName: string;
+
+    if (type === 'BARANGAY_GPB') {
+      buffer = await genBrgyGPB(blankFormData(type) as z.infer<typeof brgyGPBFormSchema>);
+      fileName = `Brgy_GPB_BLANK_CY${year}.xlsx`;
+    } else if (type === 'BARANGAY_AR') {
+      buffer = await genBrgyAR(blankFormData(type) as z.infer<typeof brgyARFormSchema>);
+      fileName = `Brgy_AR_BLANK_FY${year}.xlsx`;
+    } else if (type === 'CITY_GPB') {
+      buffer = await genCityGPB(blankFormData(type) as z.infer<typeof cityGPBFormSchema>);
+      fileName = `City_GPB_BLANK_FY${year}.xlsx`;
+    } else {
+      buffer = await genCityAR(blankFormData(type) as z.infer<typeof cityARFormSchema>);
+      fileName = `City_AR_BLANK_FY${year}.xlsx`;
+    }
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.send(buffer);
+  } catch (err) {
+    console.error('Blank template error:', err);
+    sendError(res, 'Failed to generate blank template.', 500);
+  }
+}
+
 /**
  * Read an uploaded, filled-in template workbook back into form data so the
  * online form can be auto-filled. `type` (optional) forces the template; without

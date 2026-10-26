@@ -43,14 +43,17 @@ function NavItem({
   to,
   icon: Icon,
   label,
+  dataTour,
 }: {
   to: string;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
+  dataTour?: string;
 }) {
   return (
     <NavLink
       to={to}
+      data-tour={dataTour}
       className={({ isActive }) =>
         cn(
           'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors',
@@ -141,11 +144,12 @@ export default function Sidebar() {
               Tools
             </p>
             <div className="space-y-0.5">
-              <NavItem to="/templates" icon={ClipboardListIcon} label="GAD Templates" />
-              <NavItem to="/hgdg" icon={FileCheckIcon} label="HGDG Checklists" />
+              <NavItem to="/templates" icon={ClipboardListIcon} label="GAD Templates" dataTour="nav-templates" />
+              <NavItem to="/hgdg" icon={FileCheckIcon} label="HGDG Checklists" dataTour="nav-hgdg" />
               <div className="relative">
                 <NavLink
                   to="/my-submissions"
+                  data-tour="nav-mysubs"
                   className={({ isActive }) =>
                     cn(
                       'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors',

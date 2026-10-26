@@ -224,7 +224,7 @@ export default function MySubmissionsPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div data-tour="subs-stats" className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
           { label: 'Total',          count: counts.all,      icon: FileSpreadsheetIcon, color: 'text-[#71717A]',   bg: 'bg-[#F4F4F5]'  },
           { label: 'Drafts',         count: counts.draft,    icon: FileEditIcon,        color: 'text-zinc-500',    bg: 'bg-zinc-100'   },
@@ -245,7 +245,7 @@ export default function MySubmissionsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="mb-4 flex gap-1 border-b border-[#EBEBEB]">
+      <div data-tour="subs-tabs" className="mb-4 flex gap-1 border-b border-[#EBEBEB]">
         {TABS.map(({ key, label }) => (
           <button
             key={key}
@@ -294,6 +294,7 @@ export default function MySubmissionsPage() {
             return (
             <div
               key={s.id}
+              data-tour="subs-card"
               className="overflow-hidden rounded-[10px] border border-[#EBEBEB] bg-white"
             >
               {/* Header (click to expand) */}
@@ -317,8 +318,10 @@ export default function MySubmissionsPage() {
                     className={`size-4 shrink-0 text-[#A1A1AA] transition-transform ${isOpen ? 'rotate-180' : ''}`}
                   />
                 </button>
-                <StatusBadge status={s.status} />
-                <div className="flex shrink-0 items-center gap-2">
+                <span data-tour="subs-status">
+                  <StatusBadge status={s.status} />
+                </span>
+                <div data-tour="subs-actions" className="flex shrink-0 items-center gap-2">
                   <Button size="sm" variant="outline" onClick={() => navigate(`/my-submissions/${s.id}`)}>
                     <EyeIcon className="mr-1.5 size-3.5" />
                     View

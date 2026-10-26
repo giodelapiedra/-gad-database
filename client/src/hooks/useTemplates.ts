@@ -227,16 +227,10 @@ export type AnyFormData =
   | CityGPBFormData
   | CityARFormData;
 
-export async function generateTemplateExcel(
-  templateId: string,
-  formData: AnyFormData
-): Promise<void> {
-  const res = await api.post(`/templates/${templateId}/generate`, formData, {
-    responseType: 'blob',
-  });
-
+/** Save a blob response as a file, honouring the server's Content-Disposition name. */
+function saveBlob(res: { data: BlobPart; headers: Record<string, unknown> }, fallbackName: string): void {
   const disposition = res.headers['content-disposition'] as string | undefined;
-  let fileName = `${templateId}.xlsx`;
+  let fileName = fallbackName;
   if (disposition) {
     const match = disposition.match(/filename="?([^";\n]+)"?/);
     if (match) fileName = decodeURIComponent(match[1]);
@@ -250,4 +244,23 @@ export async function generateTemplateExcel(
   a.click();
   a.remove();
   window.URL.revokeObjectURL(url);
+}
+
+export async function generateTemplateExcel(
+  templateId: string,
+  formData: AnyFormData
+): Promise<void> {
+  const res = await api.post(`/templates/${templateId}/generate`, formData, {
+    responseType: 'blob',
+  });
+  saveBlob(res, `${templateId}.xlsx`);
+}
+
+/**
+ * Download a blank workbook for a template, to fill in offline and upload back.
+ * Same layout as the filled export, so the upload auto-fills the online form.
+ */
+export async function downloadBlankTemplate(templateId: string): Promise<void> {
+  const res = await api.get(`/templates/${templateId}/blank`, { responseType: 'blob' });
+  saveBlob(res, `${templateId}_BLANK.xlsx`);
 }

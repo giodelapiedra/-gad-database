@@ -3,7 +3,6 @@ import {
   XIcon,
   UploadIcon,
   Loader2Icon,
-  FileSpreadsheetIcon,
   FileTextIcon,
   DownloadIcon,
   ArrowLeftIcon,
@@ -38,6 +37,7 @@ import {
 import {
   useGetTemplates,
   generateTemplateExcel,
+  downloadBlankTemplate,
   blankBrgyGPBRow,
   gpbKind,
   isBlankBrgyGPBRow,
@@ -123,21 +123,40 @@ function F({ label, required, field, children }: {
 function TemplateCard({ template, onSelect }: { template: TemplateDef; onSelect: (t: TemplateDef) => void }) {
   const isGPB = template.type === 'GPB';
   const isBarangay = template.level === 'Barangay';
+  const [downloadingBlank, setDownloadingBlank] = useState(false);
+
+  async function handleBlankDownload() {
+    setDownloadingBlank(true);
+    try {
+      await downloadBlankTemplate(template.id);
+      toast.success('Na-download ang blankong template.');
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Hindi ma-download ang blankong template.'));
+    } finally {
+      setDownloadingBlank(false);
+    }
+  }
+
+  // One accent colour per form type keeps the grid scannable at a glance.
+  const accent = isGPB
+    ? { bar: 'bg-emerald-500', iconBg: 'bg-emerald-50', icon: 'text-emerald-600', kicker: 'text-emerald-700', hover: 'hover:border-emerald-200' }
+    : { bar: 'bg-blue-500',    iconBg: 'bg-blue-50',    icon: 'text-blue-600',    kicker: 'text-blue-700',    hover: 'hover:border-blue-200' };
 
   return (
-    <div className="flex flex-col rounded-[12px] border border-[#EBEBEB] bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
-      <div className="mb-3 flex items-start gap-3">
-        <div className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${isGPB ? 'bg-emerald-50' : 'bg-blue-50'}`}>
-          {isGPB
-            ? <ClipboardListIcon className="size-5 text-emerald-600" />
-            : <FileTextIcon className="size-5 text-blue-600" />
-          }
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap gap-1.5 mb-1">
-            <Badge variant="outline" className={`text-[10px] ${isGPB ? 'border-emerald-200 text-emerald-700 bg-emerald-50' : 'border-blue-200 text-blue-700 bg-blue-50'}`}>
-              {template.type === 'GPB' ? 'Plan & Budget' : 'Accomplishment Report'}
-            </Badge>
+    <div
+      data-tour="tpl-card"
+      className={`group relative flex flex-col overflow-hidden rounded-2xl border border-[#E8E8EB] bg-white shadow-[0_1px_2px_rgba(9,9,11,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(9,9,11,0.09)] ${accent.hover}`}
+    >
+      <span className={`h-1 w-full ${accent.bar}`} />
+
+      <div className="flex flex-1 flex-col p-5">
+        <div className="mb-3.5 flex items-center justify-between gap-2">
+          <div className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${accent.iconBg}`}>
+            {isGPB
+              ? <ClipboardListIcon className={`size-5 ${accent.icon}`} />
+              : <FileTextIcon className={`size-5 ${accent.icon}`} />}
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
             <Badge variant="outline" className={`text-[10px] ${isBarangay ? 'border-amber-200 text-amber-700 bg-amber-50' : 'border-violet-200 text-violet-700 bg-violet-50'}`}>
               <BuildingIcon className="mr-1 size-2.5" />
               {template.level}
@@ -148,22 +167,40 @@ function TemplateCard({ template, onSelect }: { template: TemplateDef; onSelect:
               </Badge>
             )}
           </div>
-          <h3 className="text-[14px] font-semibold text-[#09090B] leading-tight">{template.name}</h3>
+        </div>
+
+        <p className={`mb-1 text-[11px] font-semibold uppercase tracking-wide ${accent.kicker}`}>
+          {isGPB ? 'Plan & Budget' : 'Accomplishment Report'}
+        </p>
+        <h3 className="text-[15px] font-semibold leading-snug text-[#09090B]">{template.name}</h3>
+        <p className="mt-1.5 line-clamp-2 flex-1 text-[12.5px] leading-relaxed text-[#71717A]">{template.description}</p>
+
+        <div className="mt-4 flex flex-col gap-2">
+          <Button
+            data-tour="tpl-fill"
+            size="sm"
+            className="w-full justify-between"
+            onClick={() => onSelect(template)}
+          >
+            <span className="inline-flex items-center">
+              <ClipboardListIcon className="mr-1.5 size-4" />
+              Fill Form Online
+            </span>
+            <ChevronRightIcon className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+          </Button>
+
+          <button
+            type="button"
+            onClick={handleBlankDownload}
+            disabled={downloadingBlank}
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#E4E4E7] py-1.5 text-[12px] font-medium text-[#52525B] transition-colors hover:bg-[#F8F8F8] hover:text-[#09090B] disabled:opacity-60"
+          >
+            {downloadingBlank
+              ? <><Loader2Icon className="size-3.5 animate-spin" /> Dina-download…</>
+              : <><DownloadIcon className="size-3.5" /> Download blank Excel</>}
+          </button>
         </div>
       </div>
-
-      <p className="mb-4 flex-1 text-[12px] leading-relaxed text-[#71717A]">{template.description}</p>
-
-      <div className="mb-4 flex items-center gap-1.5 rounded-md bg-[#F4F4F5] px-3 py-2">
-        <FileSpreadsheetIcon className="size-3.5 shrink-0 text-[#71717A]" />
-        <span className="truncate text-[11px] text-[#71717A]">{template.fileName}</span>
-      </div>
-
-      <Button size="sm" className="w-full" onClick={() => onSelect(template)}>
-        <ClipboardListIcon className="mr-1.5 size-4" />
-        Fill Form Online
-        <ChevronRightIcon className="ml-auto size-3.5" />
-      </Button>
     </div>
   );
 }
@@ -1612,21 +1649,20 @@ function ExcelDetectUpload({ templates, onOpen }: { templates: TemplateDef[]; on
   }
 
   return (
-    <div className="mb-6 flex flex-col gap-3 rounded-[10px] border border-emerald-200 bg-emerald-50 px-4 py-3.5 sm:flex-row sm:items-center">
-      <UploadIcon className="hidden size-4 shrink-0 text-emerald-700 sm:block" />
-      <div className="min-w-0 flex-1 text-[12px] text-emerald-900">
-        <p className="font-semibold">Already have a filled-in template in Excel?</p>
-        <p className="mt-0.5 text-emerald-800/80">
-          Upload it — the system recognises which template it is and opens that form already filled in.
-        </p>
-      </div>
+    <div className="flex flex-col items-start gap-1 sm:items-end">
       <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={pick} />
-      <Button size="sm" className="shrink-0 bg-emerald-600 hover:bg-emerald-700" disabled={busy}
-        onClick={() => inputRef.current?.click()}>
+      <Button
+        variant="outline"
+        size="sm"
+        className="gap-1.5"
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+      >
         {busy
-          ? <><Loader2Icon className="mr-1.5 size-4 animate-spin" /> Reading…</>
-          : <><UploadIcon className="mr-1.5 size-4" /> Upload Excel</>}
+          ? <><Loader2Icon className="size-4 animate-spin" /> Binabasa…</>
+          : <><UploadIcon className="size-4" /> Upload filled Excel</>}
       </Button>
+      <span className="text-[11px] text-[#A1A1AA]">May filled-in Excel na? Kikilalanin at bubuksan agad.</span>
     </div>
   );
 }
@@ -1669,44 +1705,41 @@ export default function TemplatesPage() {
     <DashboardLayout title="GAD Templates" breadcrumb="Tools / GAD Templates">
       {isEncoderUser && <EncoderStatusTracker />}
 
-      <div className="mb-6">
-        <p className="text-[13px] text-[#71717A] max-w-2xl">
-          Select a template below to fill out the official DILG GAD form online.
-          The system will generate a formatted Excel file following the official DILG/PCW column structure.
-        </p>
-      </div>
-
-      <div className="mb-6 flex items-start gap-3 rounded-[10px] border border-blue-200 bg-blue-50 px-4 py-3.5">
-        <InfoIcon className="mt-0.5 size-4 shrink-0 text-blue-600" />
-        <div className="text-[12px] text-blue-800">
-          <p className="font-semibold">Column Numbers Match the Official DILG Format</p>
-          <p className="mt-0.5">
-            Each form field is labeled with its official column number (1), (2), (3)… matching the printed templates.
-            CLIENT-FOCUSED → ORGANIZATION FOCUSED → ATTRIBUTED PROGRAMS sections are all included with auto-computed sub-totals.
-          </p>
+      {/* ── Start a new form ── */}
+      <section>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-4 border-b border-[#EBEBEB] pb-4">
+          <div className="min-w-0">
+            <h2 className="text-[16px] font-semibold text-[#09090B]">Gumawa ng bagong form</h2>
+            <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-[#71717A]">
+              Punan online ang opisyal na DILG GAD form — awtomatiko nang tama ang column numbers (1)(2)(3)
+              at may auto-computed na sub-totals. Hindi mo na kailangan ng Excel.
+            </p>
+          </div>
+          {templates && templates.length > 0 && (
+            <ExcelDetectUpload templates={templates} onOpen={setSelected} />
+          )}
         </div>
-      </div>
 
-      {templates && templates.length > 0 && <ExcelDetectUpload templates={templates} onOpen={setSelected} />}
+        {isLoading ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-56 rounded-2xl" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {(templates ?? []).map((t) => (
+              <TemplateCard key={t.id} template={t} onSelect={setSelected} />
+            ))}
+          </div>
+        )}
+      </section>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-52 rounded-[12px]" />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {(templates ?? []).map((t) => (
-            <TemplateCard key={t.id} template={t} onSelect={setSelected} />
-          ))}
-        </div>
-      )}
-
-      <div className="mt-6 text-center text-[11px] text-[#A1A1AA]">
-        Need the blank template file? Download it from{' '}
+      <p className="mx-auto mt-8 max-w-2xl text-center text-[11px] leading-relaxed text-[#A1A1AA]">
+        Kasama sa bawat form ang CLIENT-FOCUSED → ORGANIZATION-FOCUSED → ATTRIBUTED PROGRAMS na may
+        auto-computed na sub-totals. Kailangan ng blankong template file? I-download sa{' '}
         <a href="/resources" className="underline hover:text-[#71717A]">GAD Resources</a>.
-      </div>
+      </p>
     </DashboardLayout>
   );
 }

@@ -1,5 +1,5 @@
 import { Router, RequestHandler } from 'express';
-import { listTemplates, generateTemplate, importTemplate } from '../controllers/template.controller';
+import { listTemplates, generateTemplate, blankTemplate, importTemplate } from '../controllers/template.controller';
 import { uploadSingle } from '../middleware/upload.middleware';
 import { authenticate } from '../middleware/auth.middleware';
 
@@ -13,6 +13,9 @@ router.get('/', listTemplates as RequestHandler);
 
 // POST /api/templates/:type/generate — generate filled Excel from form data
 router.post('/:type/generate', generateTemplate as RequestHandler);
+
+// GET /api/templates/:type/blank — download a blank workbook to fill offline
+router.get('/:type/blank', blankTemplate as RequestHandler);
 
 // POST /api/templates/import — read a filled-in template workbook back into form data
 // (multipart: file, optional type, optional sheet)
