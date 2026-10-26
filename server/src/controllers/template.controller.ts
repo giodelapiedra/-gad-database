@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AuthRequest } from '../types';
 import { sendSuccess, sendError } from '../utils/response';
 import { gadShareError } from '../utils/gadBudget';
+import { applyFixedLocation } from '../utils/location';
 import { generateCityAR } from '../utils/cityAR.excel';
 import { importTemplateWorkbook, TemplateImportError, type ImportTemplateId } from '../utils/templateImport';
 
@@ -1141,20 +1142,28 @@ export async function blankTemplate(req: AuthRequest, res: Response): Promise<vo
     if (!def) { sendError(res, 'Template type not found.', 404); return; }
 
     const year = new Date().getFullYear();
+
+    // Pre-fill the fixed location so the encoder doesn't retype what's already
+    // known: region/province/city are constants, barangay comes from their
+    // profile (passed by the client). Same rule the submission flow applies, so
+    // the blank matches what a saved form would hold.
+    const barangay = typeof req.query['barangay'] === 'string' ? (req.query['barangay'] as string) : null;
+    const data = applyFixedLocation(type, blankFormData(type) as Record<string, unknown>, barangay);
+
     let buffer: Buffer;
     let fileName: string;
 
     if (type === 'BARANGAY_GPB') {
-      buffer = await genBrgyGPB(blankFormData(type) as z.infer<typeof brgyGPBFormSchema>);
+      buffer = await genBrgyGPB(data as unknown as z.infer<typeof brgyGPBFormSchema>);
       fileName = `Brgy_GPB_BLANK_CY${year}.xlsx`;
     } else if (type === 'BARANGAY_AR') {
-      buffer = await genBrgyAR(blankFormData(type) as z.infer<typeof brgyARFormSchema>);
+      buffer = await genBrgyAR(data as unknown as z.infer<typeof brgyARFormSchema>);
       fileName = `Brgy_AR_BLANK_FY${year}.xlsx`;
     } else if (type === 'CITY_GPB') {
-      buffer = await genCityGPB(blankFormData(type) as z.infer<typeof cityGPBFormSchema>);
+      buffer = await genCityGPB(data as unknown as z.infer<typeof cityGPBFormSchema>);
       fileName = `City_GPB_BLANK_FY${year}.xlsx`;
     } else {
-      buffer = await genCityAR(blankFormData(type) as z.infer<typeof cityARFormSchema>);
+      buffer = await genCityAR(data as unknown as z.infer<typeof cityARFormSchema>);
       fileName = `City_AR_BLANK_FY${year}.xlsx`;
     }
 

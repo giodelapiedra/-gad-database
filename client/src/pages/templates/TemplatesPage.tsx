@@ -123,12 +123,13 @@ function F({ label, required, field, children }: {
 function TemplateCard({ template, onSelect }: { template: TemplateDef; onSelect: (t: TemplateDef) => void }) {
   const isGPB = template.type === 'GPB';
   const isBarangay = template.level === 'Barangay';
+  const { user } = useAuth();
   const [downloadingBlank, setDownloadingBlank] = useState(false);
 
   async function handleBlankDownload() {
     setDownloadingBlank(true);
     try {
-      await downloadBlankTemplate(template.id);
+      await downloadBlankTemplate(template.id, user?.barangay);
       toast.success('Na-download ang blankong template.');
     } catch (err) {
       toast.error(apiErrorMessage(err, 'Hindi ma-download ang blankong template.'));

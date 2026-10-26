@@ -260,7 +260,10 @@ export async function generateTemplateExcel(
  * Download a blank workbook for a template, to fill in offline and upload back.
  * Same layout as the filled export, so the upload auto-fills the online form.
  */
-export async function downloadBlankTemplate(templateId: string): Promise<void> {
-  const res = await api.get(`/templates/${templateId}/blank`, { responseType: 'blob' });
+export async function downloadBlankTemplate(templateId: string, barangay?: string | null): Promise<void> {
+  const res = await api.get(`/templates/${templateId}/blank`, {
+    responseType: 'blob',
+    params: barangay ? { barangay } : undefined,
+  });
   saveBlob(res, `${templateId}_BLANK.xlsx`);
 }
