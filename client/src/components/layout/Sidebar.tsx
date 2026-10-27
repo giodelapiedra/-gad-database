@@ -343,7 +343,7 @@ export default function Sidebar() {
                       className="size-2 shrink-0 rounded-sm"
                       style={{ backgroundColor: dept.color }}
                     />
-                    <span className="flex-1 truncate">{dept.name}</span>
+                    <span className="flex-1 truncate" title={dept.name}>{dept.name}</span>
                   </NavLink>
                 ))}
 

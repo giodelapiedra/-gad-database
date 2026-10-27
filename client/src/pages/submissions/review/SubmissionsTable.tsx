@@ -48,7 +48,7 @@ export default function SubmissionsTable({
     <div className="overflow-x-auto">
       <table className="w-full min-w-[760px] border-collapse text-left">
         <thead>
-          <tr className="border-b border-[#E2E4E9] bg-[#FAFAFA] text-[11px] font-semibold uppercase tracking-wider text-[#71717A]">
+          <tr className="border-b border-[#EFEFF1] bg-[#FBFBFC] text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[#8A8A93]">
             <th className="px-5 py-2.5 font-semibold">Submission</th>
             <th className="px-4 py-2.5 font-semibold">Encoder</th>
             <th className="px-4 py-2.5 font-semibold">Submitted</th>
@@ -99,7 +99,7 @@ export default function SubmissionsTable({
                 <tr
                   key={s.id}
                   onClick={() => onRowOpen(s.id)}
-                  className="group cursor-pointer border-b border-[#F4F4F5] text-[13px] transition-colors last:border-b-0 hover:bg-[#F8FAFC]"
+                  className="group cursor-pointer border-b border-[#F4F4F5] text-[13px] transition-colors last:border-b-0 hover:bg-[#FAFAFA]"
                 >
                   {/* Submission (title + form type) */}
                   <td className="px-5 py-3.5">

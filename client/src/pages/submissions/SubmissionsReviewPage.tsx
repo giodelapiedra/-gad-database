@@ -116,41 +116,41 @@ export default function SubmissionsReviewPage() {
 
   return (
     <DashboardLayout title="Form Submissions" breadcrumb="Admin / Form Submissions">
-      <p className="mb-5 text-[13px] text-[#71717A]">
+      <p className="mb-6 max-w-2xl text-[13px] leading-relaxed text-[#71717A]">
         Review GAD form submissions from all departments. Approve them, or return them with comments for correction.
       </p>
 
       {/* ── Summary cards (also the status filter) ── */}
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
-          label="To review" hint="Needs your decision" count={counts.pending} icon={ClockIcon} tone="amber"
+          label="Pending Review" hint="Awaiting your approval" count={counts.pending} icon={ClockIcon} tone="amber"
           active={activeStatus === 'PENDING'} onClick={() => setActiveStatus('PENDING')}
         />
         <StatCard
-          label="Returned" hint="Waiting on encoder fixes" count={counts.returned} icon={CornerUpLeftIcon} tone="orange"
+          label="Returned" hint="Awaiting corrections" count={counts.returned} icon={CornerUpLeftIcon} tone="orange"
           active={activeStatus === 'RETURNED'} onClick={() => setActiveStatus('RETURNED')}
         />
         <StatCard
-          label="Approved" hint="By Budget / GAD" count={counts.approved} icon={CheckCircle2Icon} tone="emerald"
+          label="Approved" hint="Successfully approved" count={counts.approved} icon={CheckCircle2Icon} tone="emerald"
           active={activeStatus === 'APPROVED'} onClick={() => setActiveStatus('APPROVED')}
         />
         <StatCard
-          label="All submissions" hint="Every status" count={counts.all} icon={LayersIcon} tone="zinc"
+          label="Total Submissions" hint="Across all statuses" count={counts.all} icon={LayersIcon} tone="zinc"
           active={activeStatus === 'ALL'} onClick={() => setActiveStatus('ALL')}
         />
         <StatCard
-          label="Still encoding" hint="Departments not submitted" count={encodingCount} icon={Building2Icon} tone="sky"
+          label="Not Yet Submitted" hint="Departments awaiting submission" count={encodingCount} icon={Building2Icon} tone="sky"
           active={activeStatus === 'ENCODING'} onClick={() => setActiveStatus('ENCODING')}
         />
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-[#E2E4E9] bg-white">
+      <div className="overflow-hidden rounded-xl border border-[#E8E8EB] bg-white shadow-[0_1px_2px_rgba(9,9,11,0.04)]">
         {activeStatus === 'ENCODING' ? (
           <EncodingPanel data={deptStatus} />
         ) : (
           <>
             {/* List header: title + count on the left, filters on the right */}
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-3 border-b border-[#E2E4E9] px-5 py-3.5">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-3 border-b border-[#EFEFF1] px-5 py-3.5">
               <h2 className="text-[14px] font-semibold text-[#09090B]">{LIST_TITLE[listTab]}</h2>
               <span className="rounded-full bg-[#F4F4F5] px-2 py-0.5 text-[11px] font-medium tabular-nums text-[#71717A]">
                 {total}
