@@ -155,7 +155,7 @@ export function EncoderStatusTracker() {
   return (
     <section className="mb-8 space-y-3">
       {/* Greeting */}
-      <div className="flex flex-col gap-3 rounded-[12px] bg-[#18181B] px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-2xl bg-[#18181B] px-5 py-4 text-white shadow-[0_1px_2px_rgba(9,9,11,0.08)] sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-[17px] font-semibold">{greeting()}{firstName ? `, ${firstName}` : ''}</p>
           <p className="mt-0.5 text-[13px] text-zinc-300">
@@ -179,8 +179,8 @@ export function EncoderStatusTracker() {
 
       {featured && stage && (
         <div className={cn(
-          'overflow-hidden rounded-[12px] border bg-white',
-          stage === 'correction' ? 'border-red-200' : 'border-[#EBEBEB]',
+          'overflow-hidden rounded-2xl border bg-white shadow-[0_1px_2px_rgba(9,9,11,0.04)]',
+          stage === 'correction' ? 'border-red-200' : 'border-[#E8E8EB]',
         )}>
           {/* Summary */}
           <button type="button" onClick={() => open(featured)}
@@ -234,7 +234,7 @@ export function EncoderStatusTracker() {
 
       {/* Other submissions */}
       {others.length > 0 && (
-        <div className="divide-y divide-[#F4F4F5] overflow-hidden rounded-[12px] border border-[#EBEBEB] bg-white">
+        <div className="divide-y divide-[#F4F4F5] overflow-hidden rounded-2xl border border-[#E8E8EB] bg-white shadow-[0_1px_2px_rgba(9,9,11,0.04)]">
           {others.map((s) => (
             <button key={s.id} type="button" onClick={() => open(s)}
               className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-[#FAFAFA]">

@@ -1,7 +1,8 @@
 // Guided-tour step definitions, keyed by page. Copy is in Taglish for LGU
-// encoders. Each step points at a real element via a `data-tour="…"` selector;
-// steps whose element is missing on the current page are skipped at runtime
-// (see useTour), so a page with no data still gets a sensible walkthrough.
+// encoders — polished and professional. Each step points at a real element via
+// a `data-tour="…"` selector; steps whose element is missing on the current
+// page are skipped at runtime (see useTour), so a page with no data still gets
+// a sensible walkthrough.
 
 export interface TourStep {
   /** CSS selector of the element to highlight. Omit for a centered intro card. */
@@ -16,47 +17,49 @@ export interface TourStep {
 // ── Reusable steps that point at the always-present app chrome ────────────────
 
 const INTRO: TourStep = {
-  title: '👋 Maligayang pagdating!',
+  title: 'Maligayang pagdating 👋',
   description:
-    'Ito ang mabilis na gabay sa GAD System. Pindutin ang <b>Susunod</b> at ituturo ko kung para saan ang bawat parte. Puwede mong ulitin ito anumang oras sa <b>Demo</b> na button sa itaas.',
+    'Narito ang maikling gabay sa paggamit ng <b>GAD System</b>. Pindutin ang <b>Susunod</b> at ipapakita ko kung para saan ang bawat bahagi. Maaari mong ulitin ang gabay anumang oras sa pamamagitan ng <b>Demo</b> na button.',
 };
 
 const NAV_TEMPLATES: TourStep = {
   element: '[data-tour="nav-templates"]',
-  title: '📋 GAD Templates',
-  description: 'Dito ka magsisimula. Pumili ng form na pupunan — Barangay o City, Plan & Budget (GPB) o Accomplishment Report (AR).',
+  title: 'GAD Templates',
+  description:
+    'Dito ka magsisimula. Piliin ang form na nais mong punan — <b>Barangay</b> o <b>City</b>, Plan &amp; Budget (GPB) o Accomplishment Report (AR).',
   side: 'right',
   align: 'start',
 };
 
 const NAV_MYSUBS: TourStep = {
   element: '[data-tour="nav-mysubs"]',
-  title: '📊 My Submissions',
-  description: 'Dito mo masusubaybayan lahat ng isinumite mong form at ang status ng bawat isa.',
+  title: 'My Submissions',
+  description: 'Dito mo masusubaybayan ang lahat ng iyong isinumite, kasama ang kasalukuyang status ng bawat isa.',
   side: 'right',
   align: 'start',
 };
 
 const NAV_HGDG: TourStep = {
   element: '[data-tour="nav-hgdg"]',
-  title: '✅ HGDG Checklists',
-  description: 'Para sa Harmonized Gender and Development Guidelines na checklist, nandito.',
+  title: 'HGDG Checklists',
+  description: 'Narito ang Harmonized Gender and Development Guidelines (HGDG) checklist kapag kinakailangan.',
   side: 'right',
   align: 'start',
 };
 
 const NOTIF_BELL: TourStep = {
   element: '[data-tour="notif-bell"]',
-  title: '🔔 Mga Abiso',
-  description: 'Dito lalabas ang notification kapag <b>na-approve</b> o <b>na-return</b> (may itatama) ng admin ang form mo.',
+  title: 'Mga Abiso',
+  description:
+    'Dito lalabas ang abiso kapag <b>na-aprubahan</b> o <b>naibalik para sa pagwawasto</b> ng admin ang iyong form.',
   side: 'bottom',
   align: 'end',
 };
 
 const DEMO_BTN: TourStep = {
   element: '[data-tour="demo-btn"]',
-  title: '🎉 Tapos na!',
-  description: 'Pindutin ang <b>Demo</b> na ito anumang oras para ulitin ang gabay. Balikan mo lang kapag may nalimutan.',
+  title: 'Handa ka na! 🎉',
+  description: 'Natapos mo na ang gabay. Pindutin ang <b>Demo</b> na button anumang oras upang muli itong panoorin.',
   side: 'bottom',
   align: 'end',
 };
@@ -68,15 +71,17 @@ const TEMPLATES_TOUR: TourStep[] = [
   NAV_TEMPLATES,
   {
     element: '[data-tour="tpl-card"]',
-    title: 'Ang mga form',
-    description: 'Bawat kahon ay isang GAD form. Makikita mo ang uri (Plan & Budget o Accomplishment Report) at maikling paliwanag.',
+    title: 'Mga Form',
+    description:
+      'Bawat card ay isang opisyal na GAD form. Makikita mo ang uri nito (Plan &amp; Budget o Accomplishment Report) at isang maikling paglalarawan.',
     side: 'top',
     align: 'start',
   },
   {
     element: '[data-tour="tpl-fill"]',
-    title: 'Punan online',
-    description: 'Pindutin ang <b>Fill Form Online</b> para simulan punan ang form dito mismo — hindi mo na kailangan ng Excel. Pagkatapos, i-submit for approval.',
+    title: 'Punan Online',
+    description:
+      'Pindutin ang <b>Fill Form Online</b> upang punan ang form dito mismo — hindi mo na kailangan ng Excel. Isusumite ito para sa pag-apruba kapag tapos na.',
     side: 'top',
     align: 'center',
   },
@@ -90,36 +95,40 @@ const MYSUBS_TOUR: TourStep[] = [
   INTRO,
   {
     element: '[data-tour="subs-stats"]',
-    title: 'Buod ng status',
-    description: 'Mabilis na tingin: ilan lahat, <b>Drafts</b>, <b>Pending Review</b>, <b>Approved</b>, at <b>Returned</b>.',
+    title: 'Buod ng Status',
+    description:
+      'Mabilis na pangkalahatang-tanaw: kabuuan, <b>Drafts</b>, <b>Pending Review</b>, <b>Approved</b>, at <b>Returned</b>.',
     side: 'bottom',
     align: 'start',
   },
   {
     element: '[data-tour="subs-tabs"]',
-    title: 'Salain ayon sa status',
-    description: 'Gamitin ang mga tab para ipakita lang ang draft, pending, approved, o returned.',
+    title: 'Salain ayon sa Status',
+    description: 'Gamitin ang mga tab upang ipakita lamang ang draft, pending, approved, o returned.',
     side: 'bottom',
     align: 'start',
   },
   {
     element: '[data-tour="subs-card"]',
-    title: 'Ang iyong form',
-    description: 'Bawat kahon ay isang isinumite mo. I-click para makita ang detalye at ang progreso: <b>Submitted → Reviewed → Approved</b>.',
+    title: 'Ang Iyong Form',
+    description:
+      'Bawat card ay isang form na iyong isinumite. I-click ito upang makita ang detalye at ang progreso: <b>Submitted → Reviewed → Approved</b>.',
     side: 'top',
     align: 'start',
   },
   {
     element: '[data-tour="subs-status"]',
-    title: 'Ano ang ibig sabihin ng kulay',
-    description: 'Ang badge ang status: <b>Amber</b> = Pending (hinihintay i-review), <b>Green</b> = Approved, <b>Orange</b> = Returned (may itatama ka).',
+    title: 'Kahulugan ng mga Kulay',
+    description:
+      '<b>Amber</b> — Pending (hinihintay i-review). &nbsp;<b>Green</b> — Approved. &nbsp;<b>Orange</b> — Returned (may dapat iwasto).',
     side: 'left',
     align: 'center',
   },
   {
     element: '[data-tour="subs-actions"]',
-    title: 'Mga aksyon',
-    description: '<b>View</b> para buksan. Kapag <b>Returned</b>, may <b>Edit</b> para itama at i-submit ulit. Kapag <b>Approved</b>, puwede nang i-download ang Excel.',
+    title: 'Mga Aksyon',
+    description:
+      '<b>View</b> upang buksan. Kung <b>Returned</b>, may <b>Edit</b> upang iwasto at muling isumite. Kung <b>Approved</b>, maaari nang i-download ang Excel.',
     side: 'left',
     align: 'center',
   },
