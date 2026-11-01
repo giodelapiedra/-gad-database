@@ -9,7 +9,7 @@ import { noEntriesError } from '../utils/formEntries';
 import { isReviewSection, hasRows, isFieldKey } from '../utils/reviewSections';
 import { disallowedChange } from '../utils/correctionScope';
 import prisma from '../utils/db';
-import { buildExcelForType } from './template.controller';
+import { buildExcelForType, templateScopeError } from './template.controller';
 import { buildPdfForType } from '../utils/pdf';
 import { uploadToR2 } from '../utils/s3';
 import {
@@ -71,6 +71,12 @@ export async function create(req: AuthRequest, res: Response): Promise<void> {
     }
     const { templateId, isDraft } = parsed.data;
     const me = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { barangay: true } });
+
+    // A barangay user may only submit Barangay forms; a city/office user only
+    // City forms. Mirrors the template-list scope so neither level leaks across.
+    const scopeErr = templateScopeError(me?.barangay, templateId);
+    if (scopeErr) { sendError(res, scopeErr, 403); return; }
+
     const formData = applyFixedLocation(templateId, parsed.data.formData, me?.barangay);
 
     // Drafts may be incomplete; only a real submission must meet the 5% GAD budget rule.

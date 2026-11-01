@@ -140,67 +140,63 @@ function TemplateCard({ template, onSelect }: { template: TemplateDef; onSelect:
 
   // One accent colour per form type keeps the grid scannable at a glance.
   const accent = isGPB
-    ? { bar: 'bg-emerald-500', iconBg: 'bg-emerald-50', icon: 'text-emerald-600', kicker: 'text-emerald-700', hover: 'hover:border-emerald-200' }
-    : { bar: 'bg-blue-500',    iconBg: 'bg-blue-50',    icon: 'text-blue-600',    kicker: 'text-blue-700',    hover: 'hover:border-blue-200' };
+    ? { iconBg: 'bg-emerald-50', icon: 'text-emerald-600', kicker: 'text-emerald-700' }
+    : { iconBg: 'bg-blue-50',    icon: 'text-blue-600',    kicker: 'text-blue-700' };
 
   return (
     <div
       data-tour="tpl-card"
-      className={`group relative flex flex-col overflow-hidden rounded-2xl border border-[#E8E8EB] bg-white shadow-[0_1px_2px_rgba(9,9,11,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(9,9,11,0.09)] ${accent.hover}`}
+      className="group flex flex-col rounded-2xl border border-[#E8E8EB] bg-white p-5 shadow-[0_1px_2px_rgba(9,9,11,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#D4D4D8] hover:shadow-[0_8px_24px_rgba(9,9,11,0.08)]"
     >
-      <span className={`h-1 w-full ${accent.bar}`} />
-
-      <div className="flex flex-1 flex-col p-5">
-        <div className="mb-3.5 flex items-center justify-between gap-2">
-          <div className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${accent.iconBg}`}>
-            {isGPB
-              ? <ClipboardListIcon className={`size-5 ${accent.icon}`} />
-              : <FileTextIcon className={`size-5 ${accent.icon}`} />}
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-1.5">
-            <Badge variant="outline" className={`text-[10px] ${isBarangay ? 'border-amber-200 text-amber-700 bg-amber-50' : 'border-violet-200 text-violet-700 bg-violet-50'}`}>
-              <BuildingIcon className="mr-1 size-2.5" />
-              {template.level}
+      <div className="mb-3.5 flex items-center justify-between gap-2">
+        <div className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${accent.iconBg}`}>
+          {isGPB
+            ? <ClipboardListIcon className={`size-5 ${accent.icon}`} />
+            : <FileTextIcon className={`size-5 ${accent.icon}`} />}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <Badge variant="outline" className={`text-[10px] ${isBarangay ? 'border-amber-200 text-amber-700 bg-amber-50' : 'border-violet-200 text-violet-700 bg-violet-50'}`}>
+            <BuildingIcon className="mr-1 size-2.5" />
+            {template.level}
+          </Badge>
+          {template.annex && (
+            <Badge variant="outline" className="text-[10px] border-[#E4E4E7] text-[#71717A]">
+              {template.annex}
             </Badge>
-            {template.annex && (
-              <Badge variant="outline" className="text-[10px] border-[#E4E4E7] text-[#71717A]">
-                {template.annex}
-              </Badge>
-            )}
-          </div>
+          )}
         </div>
+      </div>
 
-        <p className={`mb-1 text-[11px] font-semibold uppercase tracking-wide ${accent.kicker}`}>
-          {isGPB ? 'Plan & Budget' : 'Accomplishment Report'}
-        </p>
-        <h3 className="text-[15px] font-semibold leading-snug text-[#09090B]">{template.name}</h3>
-        <p className="mt-1.5 line-clamp-2 flex-1 text-[12.5px] leading-relaxed text-[#71717A]">{template.description}</p>
+      <p className={`mb-1 text-[11px] font-semibold uppercase tracking-wide ${accent.kicker}`}>
+        {isGPB ? 'Plan & Budget' : 'Accomplishment Report'}
+      </p>
+      <h3 className="text-[15px] font-semibold leading-snug text-[#09090B]">{template.name}</h3>
+      <p className="mt-1.5 line-clamp-2 flex-1 text-[12.5px] leading-relaxed text-[#71717A]">{template.description}</p>
 
-        <div className="mt-4 flex flex-col gap-2">
-          <Button
-            data-tour="tpl-fill"
-            size="sm"
-            className="w-full justify-between"
-            onClick={() => onSelect(template)}
-          >
-            <span className="inline-flex items-center">
-              <ClipboardListIcon className="mr-1.5 size-4" />
-              Fill Form Online
-            </span>
-            <ChevronRightIcon className="size-3.5 transition-transform group-hover:translate-x-0.5" />
-          </Button>
+      <div className="mt-4 flex flex-col gap-2">
+        <Button
+          data-tour="tpl-fill"
+          size="sm"
+          className="w-full justify-between"
+          onClick={() => onSelect(template)}
+        >
+          <span className="inline-flex items-center">
+            <ClipboardListIcon className="mr-1.5 size-4" />
+            Fill Form Online
+          </span>
+          <ChevronRightIcon className="size-3.5 transition-transform group-hover:translate-x-0.5" />
+        </Button>
 
-          <button
-            type="button"
-            onClick={handleBlankDownload}
-            disabled={downloadingBlank}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#E4E4E7] py-1.5 text-[12px] font-medium text-[#52525B] transition-colors hover:bg-[#F8F8F8] hover:text-[#09090B] disabled:opacity-60"
-          >
-            {downloadingBlank
-              ? <><Loader2Icon className="size-3.5 animate-spin" /> Dina-download…</>
-              : <><DownloadIcon className="size-3.5" /> Download blank Excel</>}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleBlankDownload}
+          disabled={downloadingBlank}
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#E4E4E7] py-1.5 text-[12px] font-medium text-[#52525B] transition-colors hover:bg-[#F8F8F8] hover:text-[#09090B] disabled:opacity-60"
+        >
+          {downloadingBlank
+            ? <><Loader2Icon className="size-3.5 animate-spin" /> Dina-download…</>
+            : <><DownloadIcon className="size-3.5" /> Download blank Excel</>}
+        </button>
       </div>
     </div>
   );
@@ -1146,7 +1142,9 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
       return 'All rows must have a Gender Issue or GAD Mandate filled in.';
     if (allRows.some((r) => !r.activity.trim()))
       return 'All rows must have a GAD Activity filled in.';
-    return validateGadShare(d.totalLguBudget, d.totalGadBudget, 'LGU');
+    // City forms show the GAD share for reference but do NOT require the 5%
+    // minimum (unlike Barangay forms, where it's mandatory). See GadBudgetShare.
+    return null;
   }
 
   async function saveEdit() {
@@ -1262,7 +1260,7 @@ export function CityGPBForm({ template, onBack, initialData, editId, isDraftEdit
               </F>
             </div>
             <div className="lg:w-64 lg:shrink-0">
-              <GadBudgetShare totalBudget={d.totalLguBudget} gadBudget={d.totalGadBudget} budgetLabel="LGU" />
+              <GadBudgetShare totalBudget={d.totalLguBudget} gadBudget={d.totalGadBudget} budgetLabel="LGU" required={false} />
             </div>
           </div>
         </div>
@@ -1384,7 +1382,9 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit,
       return 'All rows must have a Gender Issue or GAD Mandate filled in.';
     if (allRows.some((r) => !r.activity.trim()))
       return 'All rows must have a GAD Activity filled in.';
-    return validateGadShare(d.totalLguBudget, d.totalGadBudget, 'LGU');
+    // City forms show the GAD share for reference but do NOT require the 5%
+    // minimum (unlike Barangay forms, where it's mandatory). See GadBudgetShare.
+    return null;
   }
 
   async function saveEdit() {
@@ -1553,7 +1553,7 @@ export function CityARForm({ template, onBack, initialData, editId, isDraftEdit,
               </F>
             </div>
             <div className="lg:w-64 lg:shrink-0">
-              <GadBudgetShare totalBudget={d.totalLguBudget} gadBudget={d.totalGadBudget} budgetLabel="LGU" />
+              <GadBudgetShare totalBudget={d.totalLguBudget} gadBudget={d.totalGadBudget} budgetLabel="LGU" required={false} />
             </div>
           </div>
         </div>
@@ -1674,12 +1674,27 @@ export default function TemplatesPage() {
   const { data: templates, isLoading } = useGetTemplates();
   const { user } = useAuth();
   const isEncoderUser = user?.role === 'ENCODER';
+
+  // Scope the forms to the user's level. A user with an assigned barangay only
+  // works on Barangay forms; a city/office user (no barangay — e.g. the GAD
+  // office) only works on City forms. This keeps the two levels from mixing.
+  const userLevel: 'Barangay' | 'City' = user?.barangay ? 'Barangay' : 'City';
+  const visibleTemplates = (templates ?? []).filter((t) => t.level === userLevel);
+
   // The open form lives in the URL (?form=BARANGAY_AR) so a refresh — or the
   // browser's Back button — lands on the same form instead of the template list.
   const [searchParams, setSearchParams] = useSearchParams();
   const formId = searchParams.get('form');
-  const selected = formId ? (templates ?? []).find((t) => t.id === formId) ?? null : null;
+  // Resolve against the scoped list only: a URL pointing at another level's form
+  // (hand-typed or stale) is treated as no selection and falls back to the grid.
+  const selected = formId ? visibleTemplates.find((t) => t.id === formId) ?? null : null;
   const setSelected = (t: TemplateDef | null) => setSearchParams(t ? { form: t.id } : {});
+
+  // Clean a now-invalid ?form= out of the URL once templates have loaded, so an
+  // out-of-scope link doesn't linger in the address bar after we fall back.
+  useEffect(() => {
+    if (formId && !isLoading && !selected) setSearchParams({}, { replace: true });
+  }, [formId, isLoading, selected, setSearchParams]);
 
   if (formId && isLoading) {
     return (
@@ -1716,8 +1731,8 @@ export default function TemplatesPage() {
               at may auto-computed na sub-totals. Hindi mo na kailangan ng Excel.
             </p>
           </div>
-          {templates && templates.length > 0 && (
-            <ExcelDetectUpload templates={templates} onOpen={setSelected} />
+          {visibleTemplates.length > 0 && (
+            <ExcelDetectUpload templates={visibleTemplates} onOpen={setSelected} />
           )}
         </div>
 
@@ -1729,7 +1744,7 @@ export default function TemplatesPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {(templates ?? []).map((t) => (
+            {visibleTemplates.map((t) => (
               <TemplateCard key={t.id} template={t} onSelect={setSelected} />
             ))}
           </div>

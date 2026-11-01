@@ -7,6 +7,7 @@ import { gadShareError } from '../utils/gadBudget';
 import { applyFixedLocation } from '../utils/location';
 import { generateCityAR } from '../utils/cityAR.excel';
 import { importTemplateWorkbook, TemplateImportError, type ImportTemplateId } from '../utils/templateImport';
+import prisma from '../utils/db';
 
 // ─── Template Definitions ──────────────────────────────────────────────────
 
@@ -54,6 +55,48 @@ export const TEMPLATE_TYPES = [
 ] as const;
 
 type TemplateId = typeof TEMPLATE_TYPES[number]['id'];
+
+// ─── Level scoping ───────────────────────────────────────────────────────────
+// A user with an assigned barangay works only on Barangay forms; a city/office
+// user (no barangay — e.g. the GAD office admin) works only on City forms. The
+// client hides the other level's cards; these helpers enforce the same rule on
+// the server so a crafted request can't reach across levels.
+
+export type FormLevel = 'Barangay' | 'City';
+
+export function userLevelFor(barangay: string | null | undefined): FormLevel {
+  return barangay ? 'Barangay' : 'City';
+}
+
+export function templateLevelOf(templateId: string): FormLevel | null {
+  const def = TEMPLATE_TYPES.find((t) => t.id === templateId);
+  return def ? (def.level as FormLevel) : null;
+}
+
+/**
+ * Human-readable message if `barangay`'s owner may not use `templateId`, else
+ * null. Unknown template ids return null — the caller already answers 404.
+ * Applies to admins too: the GAD office is a city account.
+ */
+export function templateScopeError(barangay: string | null | undefined, templateId: string): string | null {
+  const level = templateLevelOf(templateId);
+  if (!level) return null;
+  const mine = userLevelFor(barangay);
+  if (level === mine) return null;
+  return mine === 'Barangay'
+    ? 'Your account is assigned to a barangay, so you can only use Barangay-level forms.'
+    : 'Your account is a city/office account, so you can only use City-level forms.';
+}
+
+/** The acting user's assigned barangay (the JWT doesn't carry it, so read it). */
+export async function actingUserBarangay(req: AuthRequest): Promise<string | null> {
+  if (!req.user?.id) return null;
+  const me = await prisma.user.findUnique({
+    where: { id: req.user.id },
+    select: { barangay: true },
+  });
+  return me?.barangay ?? null;
+}
 
 // ─── Shared sub-schemas ────────────────────────────────────────────────────
 
@@ -1034,6 +1077,11 @@ async function genCityAR(d: z.infer<typeof cityARFormSchema>): Promise<Buffer> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export async function listTemplates(_req: AuthRequest, res: Response): Promise<void> {
+  // Returns all template *definitions* (names, column labels) — reference
+  // metadata, not a security boundary. Admins need every definition to render a
+  // submission from any level for review, so this stays unscoped. The level rule
+  // is enforced on the actions that create/produce forms (generate, blank,
+  // import, submission create) and reflected in the client's template grid.
   sendSuccess(res, TEMPLATE_TYPES, 'Templates retrieved successfully');
 }
 
@@ -1042,6 +1090,9 @@ export async function generateTemplate(req: AuthRequest, res: Response): Promise
     const { type } = req.params as { type: TemplateId };
     const def = TEMPLATE_TYPES.find((t) => t.id === type);
     if (!def) { sendError(res, 'Template type not found.', 404); return; }
+
+    const scopeErr = templateScopeError(await actingUserBarangay(req), type);
+    if (scopeErr) { sendError(res, scopeErr, 403); return; }
 
     const budgetErr = gadShareError(type, req.body ?? {});
     if (budgetErr) { sendError(res, budgetErr); return; }
@@ -1141,6 +1192,9 @@ export async function blankTemplate(req: AuthRequest, res: Response): Promise<vo
     const def = TEMPLATE_TYPES.find((t) => t.id === type);
     if (!def) { sendError(res, 'Template type not found.', 404); return; }
 
+    const scopeErr = templateScopeError(await actingUserBarangay(req), type);
+    if (scopeErr) { sendError(res, scopeErr, 403); return; }
+
     const year = new Date().getFullYear();
 
     // Pre-fill the fixed location so the encoder doesn't retype what's already
@@ -1189,10 +1243,23 @@ export async function importTemplate(req: AuthRequest, res: Response): Promise<v
     const { type, sheet } = (req.body ?? {}) as { type?: string; sheet?: string };
     if (type && !TEMPLATE_TYPES.some((t) => t.id === type)) { sendError(res, 'Template type not found.', 404); return; }
 
+    const barangay = await actingUserBarangay(req);
+    // Reject an explicitly-requested out-of-level type up front.
+    if (type) {
+      const scopeErr = templateScopeError(barangay, type);
+      if (scopeErr) { sendError(res, scopeErr, 403); return; }
+    }
+
     const result = importTemplateWorkbook(req.file.buffer, {
       templateId: (type || undefined) as ImportTemplateId | undefined,
       sheet: sheet || undefined,
     });
+
+    // When the type was auto-detected, enforce the level on the result too, so a
+    // city workbook can't be read into a barangay account's form (or vice versa).
+    const detectedErr = templateScopeError(barangay, result.templateId);
+    if (detectedErr) { sendError(res, detectedErr, 403); return; }
+
     sendSuccess(res, { ...result, fileName: req.file.originalname }, 'Workbook read successfully');
   } catch (err) {
     if (err instanceof TemplateImportError) { sendError(res, err.message); return; }

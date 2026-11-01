@@ -9,11 +9,12 @@ const money = (n: number) => n.toLocaleString('en-PH', { minimumFractionDigits: 
 /** Returns a user-facing error when the form's GAD budget is below 5% of its total budget, else null. */
 export function gadShareError(templateId: string, formData: Record<string, unknown>): string | null {
   const isBarangay = templateId === 'BARANGAY_GPB' || templateId === 'BARANGAY_AR';
-  const isCity = templateId === 'CITY_GPB' || templateId === 'CITY_AR';
-  if (!isBarangay && !isCity) return null;
+  // City forms show the GAD share for reference only — the 5% minimum is NOT
+  // required there, so they're never blocked on it. Only Barangay forms enforce it.
+  if (!isBarangay) return null;
 
-  const label = isBarangay ? 'Barangay' : 'LGU';
-  const total = Number(isBarangay ? formData.totalBrgyBudget : formData.totalLguBudget) || 0;
+  const label = 'Barangay';
+  const total = Number(formData.totalBrgyBudget) || 0;
   const gad = Number(formData.totalGadBudget) || 0;
 
   if (total <= 0) return `Total ${label} Budget is required.`;
