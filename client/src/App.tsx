@@ -23,8 +23,9 @@ import SubmissionsReviewPage from '@/pages/submissions/SubmissionsReviewPage';
 import SubmissionViewPage from '@/pages/submissions/SubmissionViewPage';
 import SubmissionEditPage from '@/pages/submissions/SubmissionEditPage';
 import AdminHubPage from '@/pages/AdminHubPage';
-import HGDGPage from '@/pages/hgdg/HGDGPage';
 import TrainingsPage from '@/pages/trainings/TrainingsPage';
+import TabulationPage from '@/pages/tabulation/TabulationPage';
+import TabulationEventPage from '@/pages/tabulation/TabulationEventPage';
 
 // ── Smart root redirect based on the user's role ──────────────────────────
 function RoleRedirect() {
@@ -52,11 +53,6 @@ export default function App() {
               {/* Root → smart redirect per role */}
               <Route path="/" element={<RoleRedirect />} />
 
-              {/* ── Any authenticated user ──────────────────────────────── */}
-              <Route element={<ProtectedRoute />}>
-                <Route path="/hgdg" element={<HGDGPage />} />
-              </Route>
-
               {/* ── ENCODER only ────────────────────────────────────────── */}
               <Route element={<ProtectedRoute roles={['ENCODER']} />}>
                 <Route path="/templates" element={<TemplatesPage />} />
@@ -78,6 +74,8 @@ export default function App() {
                 <Route path="/upload-history"       element={<UploadHistoryPage />} />
                 <Route path="/resources"            element={<ResourcesPage />} />
                 <Route path="/trainings"            element={<TrainingsPage />} />
+                <Route path="/tabulation"           element={<TabulationPage />} />
+                <Route path="/tabulation/:id"       element={<TabulationEventPage />} />
                 <Route path="/admin/users"          element={<UsersPage />} />
               </Route>
 

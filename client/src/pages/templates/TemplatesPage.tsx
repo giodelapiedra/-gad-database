@@ -122,7 +122,6 @@ function F({ label, required, field, children }: {
 
 function TemplateCard({ template, onSelect }: { template: TemplateDef; onSelect: (t: TemplateDef) => void }) {
   const isGPB = template.type === 'GPB';
-  const isBarangay = template.level === 'Barangay';
   const { user } = useAuth();
   const [downloadingBlank, setDownloadingBlank] = useState(false);
 
@@ -146,34 +145,28 @@ function TemplateCard({ template, onSelect }: { template: TemplateDef; onSelect:
   return (
     <div
       data-tour="tpl-card"
-      className="group flex flex-col rounded-2xl border border-[#E8E8EB] bg-white p-5 shadow-[0_1px_2px_rgba(9,9,11,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#D4D4D8] hover:shadow-[0_8px_24px_rgba(9,9,11,0.08)]"
+      className="group flex flex-col rounded-2xl border border-[#E8E8EB] bg-white p-6 shadow-[0_1px_2px_rgba(9,9,11,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#D4D4D8] hover:shadow-[0_8px_24px_rgba(9,9,11,0.08)]"
     >
-      <div className="mb-3.5 flex items-center justify-between gap-2">
+      <div className="mb-4 flex items-start justify-between gap-2">
         <div className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${accent.iconBg}`}>
           {isGPB
             ? <ClipboardListIcon className={`size-5 ${accent.icon}`} />
             : <FileTextIcon className={`size-5 ${accent.icon}`} />}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
-          <Badge variant="outline" className={`text-[10px] ${isBarangay ? 'border-amber-200 text-amber-700 bg-amber-50' : 'border-violet-200 text-violet-700 bg-violet-50'}`}>
-            <BuildingIcon className="mr-1 size-2.5" />
-            {template.level}
+        {template.annex && (
+          <Badge variant="outline" className="text-[10px] border-[#E4E4E7] text-[#71717A]">
+            {template.annex}
           </Badge>
-          {template.annex && (
-            <Badge variant="outline" className="text-[10px] border-[#E4E4E7] text-[#71717A]">
-              {template.annex}
-            </Badge>
-          )}
-        </div>
+        )}
       </div>
 
       <p className={`mb-1 text-[11px] font-semibold uppercase tracking-wide ${accent.kicker}`}>
         {isGPB ? 'Plan & Budget' : 'Accomplishment Report'}
       </p>
-      <h3 className="text-[15px] font-semibold leading-snug text-[#09090B]">{template.name}</h3>
+      <h3 className="text-[15.5px] font-semibold leading-snug text-[#09090B]">{template.name}</h3>
       <p className="mt-1.5 line-clamp-2 flex-1 text-[12.5px] leading-relaxed text-[#71717A]">{template.description}</p>
 
-      <div className="mt-4 flex flex-col gap-2">
+      <div className="mt-5 flex flex-col gap-2">
         <Button
           data-tour="tpl-fill"
           size="sm"
@@ -1679,6 +1672,8 @@ export default function TemplatesPage() {
   // works on Barangay forms; a city/office user (no barangay — e.g. the GAD
   // office) only works on City forms. This keeps the two levels from mixing.
   const userLevel: 'Barangay' | 'City' = user?.barangay ? 'Barangay' : 'City';
+  // Shown in the header so it's clear why only this level's forms appear.
+  const scopeLabel = user?.barangay ? `Barangay ${user.barangay}` : 'City / Office';
   const visibleTemplates = (templates ?? []).filter((t) => t.level === userLevel);
 
   // The open form lives in the URL (?form=BARANGAY_AR) so a refresh — or the
@@ -1722,11 +1717,17 @@ export default function TemplatesPage() {
       {isEncoderUser && <EncoderStatusTracker />}
 
       {/* ── Start a new form ── */}
-      <section>
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-4 border-b border-[#EBEBEB] pb-4">
+      <section className="mx-auto max-w-4xl">
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-4 border-b border-[#EBEBEB] pb-5">
           <div className="min-w-0">
-            <h2 className="text-[16px] font-semibold text-[#09090B]">Gumawa ng bagong form</h2>
-            <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-[#71717A]">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-[17px] font-semibold text-[#09090B]">Gumawa ng bagong form</h2>
+              <span className="inline-flex items-center gap-1 rounded-full border border-[#E4E4E7] bg-[#FAFAFA] px-2 py-0.5 text-[11px] font-medium text-[#52525B]">
+                <BuildingIcon className="size-3 text-[#71717A]" />
+                {scopeLabel}
+              </span>
+            </div>
+            <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-[#71717A]">
               Punan online ang opisyal na DILG GAD form — awtomatiko nang tama ang column numbers (1)(2)(3)
               at may auto-computed na sub-totals. Hindi mo na kailangan ng Excel.
             </p>
@@ -1737,25 +1738,29 @@ export default function TemplatesPage() {
         </div>
 
         {isLoading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-56 rounded-2xl" />
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Skeleton key={i} className="h-60 rounded-2xl" />
             ))}
           </div>
+        ) : visibleTemplates.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-[#D4D4D8] bg-[#FAFAFA] px-6 py-12 text-center">
+            <p className="text-[13px] text-[#71717A]">Walang available na form para sa iyong account.</p>
+          </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             {visibleTemplates.map((t) => (
               <TemplateCard key={t.id} template={t} onSelect={setSelected} />
             ))}
           </div>
         )}
-      </section>
 
-      <p className="mx-auto mt-8 max-w-2xl text-center text-[11px] leading-relaxed text-[#A1A1AA]">
-        Kasama sa bawat form ang CLIENT-FOCUSED → ORGANIZATION-FOCUSED → ATTRIBUTED PROGRAMS na may
-        auto-computed na sub-totals. Kailangan ng blankong template file? I-download sa{' '}
-        <a href="/resources" className="underline hover:text-[#71717A]">GAD Resources</a>.
-      </p>
+        <p className="mt-6 text-center text-[11px] leading-relaxed text-[#A1A1AA]">
+          Kasama sa bawat form ang CLIENT-FOCUSED → ORGANIZATION-FOCUSED → ATTRIBUTED PROGRAMS na may
+          auto-computed na sub-totals. Kailangan ng blankong template file? I-download sa{' '}
+          <a href="/resources" className="underline hover:text-[#71717A]">GAD Resources</a>.
+        </p>
+      </section>
     </DashboardLayout>
   );
 }

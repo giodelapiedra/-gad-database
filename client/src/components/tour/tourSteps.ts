@@ -39,14 +39,6 @@ const NAV_MYSUBS: TourStep = {
   align: 'start',
 };
 
-const NAV_HGDG: TourStep = {
-  element: '[data-tour="nav-hgdg"]',
-  title: 'HGDG Checklists',
-  description: 'Narito ang Harmonized Gender and Development Guidelines (HGDG) checklist kapag kinakailangan.',
-  side: 'right',
-  align: 'start',
-};
-
 const NOTIF_BELL: TourStep = {
   element: '[data-tour="notif-bell"]',
   title: 'Mga Abiso',
@@ -86,7 +78,6 @@ const TEMPLATES_TOUR: TourStep[] = [
     align: 'center',
   },
   NAV_MYSUBS,
-  NAV_HGDG,
   NOTIF_BELL,
   DEMO_BTN,
 ];
@@ -136,9 +127,9 @@ const MYSUBS_TOUR: TourStep[] = [
   DEMO_BTN,
 ];
 
-// A minimal tour for any other encoder page (view/edit/HGDG) so the Demo button
+// A minimal tour for any other encoder page (view/edit) so the Demo button
 // always does something useful.
-const DEFAULT_TOUR: TourStep[] = [INTRO, NAV_TEMPLATES, NAV_MYSUBS, NAV_HGDG, NOTIF_BELL, DEMO_BTN];
+const DEFAULT_TOUR: TourStep[] = [INTRO, NAV_TEMPLATES, NAV_MYSUBS, NOTIF_BELL, DEMO_BTN];
 
 /** Pick the tour for the current route. */
 export function stepsForPath(pathname: string): TourStep[] {

@@ -7,9 +7,9 @@ import {
   BarChart3,
   Clock,
   FolderDownIcon,
-  FileCheckIcon,
   LogOut,
   ChevronRightIcon,
+  TrophyIcon,
   ChevronLeftIcon,
   ChevronDownIcon,
   ChevronUpIcon,
@@ -34,6 +34,7 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/hooks/useAuth';
 import { useGetDepartments } from '@/hooks/useDepartments';
 import { useGetPendingCount, useDepartmentStatus } from '@/hooks/useSubmissions';
+import { useTabulationEvents } from '@/hooks/useTabulation';
 import { getInitials } from '@/utils/formatters';
 import { cn } from '@/lib/utils';
 
@@ -44,15 +45,19 @@ function NavItem({
   icon: Icon,
   label,
   dataTour,
+  end,
 }: {
   to: string;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   dataTour?: string;
+  /** Only active on an exact path match (not on child routes). */
+  end?: boolean;
 }) {
   return (
     <NavLink
       to={to}
+      end={end}
       data-tour={dataTour}
       className={({ isActive }) =>
         cn(
@@ -85,6 +90,9 @@ export default function Sidebar() {
   // Admin "Form Submissions" is a focused workspace — when inside it, the
   // sidebar hides the dashboard tools and shows submissions + department filter.
   const inSubmissions = !isEncoder && location.pathname.startsWith('/submissions');
+  // Admin "Tabulation" is its own workspace too (opened from the Home menu card).
+  const inTabulation = !isEncoder && location.pathname.startsWith('/tabulation');
+  const { data: tabEvents, isLoading: tabEventsLoading } = useTabulationEvents({ enabled: inTabulation });
 
   const { data: pendingData } = useGetPendingCount();
   const pendingCount = pendingData?.count ?? 0;
@@ -145,7 +153,6 @@ export default function Sidebar() {
             </p>
             <div className="space-y-0.5">
               <NavItem to="/templates" icon={ClipboardListIcon} label="GAD Templates" dataTour="nav-templates" />
-              <NavItem to="/hgdg" icon={FileCheckIcon} label="HGDG Checklists" dataTour="nav-hgdg" />
               <div className="relative">
                 <NavLink
                   to="/my-submissions"
@@ -168,6 +175,51 @@ export default function Sidebar() {
                   )}
                 </NavLink>
               </div>
+            </div>
+          </>
+        )}
+
+        {/* ── ADMIN: Tabulation workspace (focused) ─────────────────── */}
+        {inTabulation && (
+          <>
+            <button
+              onClick={() => navigate('/home')}
+              className="mb-3 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-[#71717A] transition-colors hover:bg-[#F9F9F9] hover:text-[#09090B]"
+            >
+              <ChevronLeftIcon className="size-4 shrink-0" />
+              <span className="flex-1 text-left">Back to Menu</span>
+            </button>
+
+            <p className="mb-1.5 px-2.5 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
+              Tabulation
+            </p>
+            <div className="space-y-0.5">
+              <NavItem to="/tabulation" icon={TrophyIcon} label="All Events" end />
+            </div>
+
+            <p className="mb-1.5 mt-5 px-2.5 text-[11px] font-medium uppercase tracking-wider text-[#A1A1AA]">
+              Events
+            </p>
+            <div className="space-y-0.5">
+              {tabEventsLoading && Array.from({ length: 3 }).map((_, i) => <SidebarItemSkeleton key={i} />)}
+              {!tabEventsLoading && (tabEvents?.length ?? 0) === 0 && (
+                <p className="px-2.5 py-1 text-[12px] text-[#A1A1AA]">No events yet</p>
+              )}
+              {tabEvents?.map((e) => (
+                <NavLink
+                  key={e.id}
+                  to={`/tabulation/${e.id}`}
+                  className={({ isActive }) => cn(
+                    'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors',
+                    isActive
+                      ? 'border-l-2 border-[#18181B] bg-[#F4F4F5] font-medium text-[#09090B]'
+                      : 'text-[#71717A] hover:bg-[#F9F9F9] hover:text-[#09090B]',
+                  )}
+                >
+                  <span className={cn('size-1.5 shrink-0 rounded-full', e.isPublished ? 'bg-emerald-500' : 'bg-[#D4D4D8]')} />
+                  <span className="flex-1 truncate">{e.title}</span>
+                </NavLink>
+              ))}
             </div>
           </>
         )}
@@ -287,7 +339,7 @@ export default function Sidebar() {
         )}
 
         {/* ── ADMIN: full (dashboard) navigation ────────────────────── */}
-        {!isEncoder && !inSubmissions && (
+        {!isEncoder && !inSubmissions && !inTabulation && (
           <>
             <button
               onClick={() => navigate('/home')}
@@ -381,7 +433,6 @@ export default function Sidebar() {
               <NavItem to="/upload-history"  icon={Clock}           label="Upload History" />
               <NavItem to="/resources"       icon={FolderDownIcon}  label="GAD Resources" />
               <NavItem to="/trainings"       icon={CalendarDaysIcon} label="Trainings & Seminars" />
-              <NavItem to="/hgdg"            icon={FileCheckIcon}   label="HGDG Checklists" />
             </div>
 
             {/* Admin */}

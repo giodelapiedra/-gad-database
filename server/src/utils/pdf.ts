@@ -127,7 +127,7 @@ function doc(title: string, subtitle: string, info: any, widths: number[], body:
   };
 }
 
-function render(dd: TDocumentDefinitions): Promise<Buffer> {
+export function render(dd: TDocumentDefinitions): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const pdfDoc = printer.createPdfKitDocument(dd);
     const chunks: Buffer[] = [];

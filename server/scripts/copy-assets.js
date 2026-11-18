@@ -1,12 +1,13 @@
 /**
  * `tsc` only emits JavaScript, so the `.xlsx` form templates in src/templates
- * would be missing from a production build. Mirror them into dist/ after compile.
+ * (and images in src/assets) would be missing from a production build. Mirror them into dist/ after compile.
  */
 const fs = require('fs');
 const path = require('path');
 
 const pairs = [
   [path.join(__dirname, '..', 'src', 'templates'), path.join(__dirname, '..', 'dist', 'templates')],
+  [path.join(__dirname, '..', 'src', 'assets'), path.join(__dirname, '..', 'dist', 'assets')],
 ];
 
 let copied = 0;

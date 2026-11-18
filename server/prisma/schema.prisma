@@ -32,6 +32,17 @@ enum TrainingType {
   CONFERENCE
 }
 
+enum TabulationRankingMethod {
+  AVERAGE
+  RANK_SUM
+}
+
+enum TabulationContestStatus {
+  SETUP
+  SCORING
+  FINALIZED
+}
+
 enum SubmissionStatus {
   DRAFT
   PENDING
@@ -64,6 +75,7 @@ model User {
   submissionComments SubmissionComment[] @relation("SubmissionCommentAuthor")
   resolvedComments   SubmissionComment[] @relation("SubmissionCommentResolver")
   trainings          Training[]          @relation("TrainingCreator")
+  tabulationEvents   TabulationEvent[]   @relation("TabulationEventCreator")
 
   @@index([departmentId])
   @@map("users")
@@ -307,4 +319,115 @@ model Training {
 
   @@index([isPublished, startDate])
   @@map("trainings")
+}
+
+// ─── Tabulation (competition scoring) ──────────────────────────────────────
+// Event → Contests → (Criteria, Contestants, Judges) → Scores.
+// Live results stay admin-only until a contest's results are explicitly published.
+
+model TabulationEvent {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @default("")
+  eventDate   DateTime @db.Date
+  venue       String   @default("")
+  /// Shows the event (and any published contest results) on the public website.
+  isPublished Boolean  @default(false)
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User?               @relation("TabulationEventCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  contests  TabulationContest[]
+
+  @@index([isPublished, eventDate])
+  @@map("tabulation_events")
+}
+
+model TabulationContest {
+  id               String                  @id @default(cuid())
+  eventId          String
+  name             String
+  /// Column label for contestants on the score sheet, e.g. "School" or "Barangay".
+  contestantLabel  String                  @default("Contestant")
+  rankingMethod    TabulationRankingMethod @default(AVERAGE)
+  status           TabulationContestStatus @default(SETUP)
+  /// Final rankings visible on the public website (only allowed once FINALIZED).
+  resultsPublished Boolean                 @default(false)
+  sortOrder        Int                     @default(0)
+  finalizedAt      DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  event       TabulationEvent         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  criteria    TabulationCriterion[]
+  contestants TabulationContestant[]
+  judges      TabulationJudge[]
+  scores      TabulationScore[]
+
+  @@index([eventId, sortOrder])
+  @@map("tabulation_contests")
+}
+
+model TabulationCriterion {
+  id          String @id @default(cuid())
+  contestId   String
+  name        String
+  description String @default("")
+  /// Percentage weight; doubles as the maximum points a judge can give (criteria sum to 100).
+  weight      Float
+  sortOrder   Int    @default(0)
+
+  contest TabulationContest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  scores  TabulationScore[]
+
+  @@index([contestId, sortOrder])
+  @@map("tabulation_criteria")
+}
+
+model TabulationContestant {
+  id        String @id @default(cuid())
+  contestId String
+  number    Int
+  name      String
+
+  contest TabulationContest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  scores  TabulationScore[]
+
+  @@index([contestId, number])
+  @@map("tabulation_contestants")
+}
+
+model TabulationJudge {
+  id        String @id @default(cuid())
+  contestId String
+  judgeNo   Int
+  name      String
+  /// Position/office shown under the signature line, e.g. "SK Federation President".
+  title     String @default("")
+
+  contest TabulationContest @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  scores  TabulationScore[]
+
+  @@index([contestId, judgeNo])
+  @@map("tabulation_judges")
+}
+
+model TabulationScore {
+  id           String   @id @default(cuid())
+  contestId    String
+  judgeId      String
+  contestantId String
+  criterionId  String
+  value        Float
+  updatedAt    DateTime @updatedAt
+
+  contest    TabulationContest    @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  judge      TabulationJudge      @relation(fields: [judgeId], references: [id], onDelete: Cascade)
+  contestant TabulationContestant @relation(fields: [contestantId], references: [id], onDelete: Cascade)
+  criterion  TabulationCriterion  @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+
+  @@unique([judgeId, contestantId, criterionId])
+  @@index([contestId])
+  @@map("tabulation_scores")
 }

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   LayoutDashboardIcon,
   FileSpreadsheetIcon,
+  TrophyIcon,
   ArrowRightIcon,
   LogOutIcon,
 } from 'lucide-react';
@@ -25,6 +26,13 @@ const CARDS = [
     icon: FileSpreadsheetIcon,
     accent: 'bg-emerald-50 text-emerald-600',
     showPending: true,
+  },
+  {
+    to: '/tabulation',
+    title: 'Tabulation',
+    description: 'Score competitions, rank contestants live, and publish final results to the website.',
+    icon: TrophyIcon,
+    accent: 'bg-amber-50 text-amber-600',
   },
 ] satisfies { to: string; title: string; description: string; icon: React.ComponentType<{ className?: string }>; accent: string; showPending?: boolean }[];
 
@@ -59,13 +67,13 @@ export default function AdminHubPage() {
 
       {/* Chooser */}
       <main className="flex flex-1 items-center justify-center px-6 py-12">
-        <div className="w-full max-w-3xl">
+        <div className="w-full max-w-5xl">
           <div className="mb-8 text-center">
             <h1 className="text-[22px] font-bold text-[#09090B]">Welcome, {firstName}</h1>
             <p className="mt-1 text-[14px] text-[#71717A]">Where would you like to go?</p>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {CARDS.map(({ to, title, description, icon: Icon, accent, showPending }) => (
               <Link
                 key={to}
